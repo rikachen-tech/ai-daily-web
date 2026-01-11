@@ -1,279 +1,214 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="zh-CN">
 <head>
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-  <meta http-equiv="Content-Style-Type" content="text/css">
-  <title></title>
-  <meta name="Generator" content="Cocoa HTML Writer">
-  <meta name="CocoaVersion" content="2487.7">
-  <style type="text/css">
-    p.p1 {margin: 0.0px 0.0px 0.0px 0.0px; font: 14.0px Menlo; color: #cacaca; -webkit-text-stroke: #cacaca}
-    p.p2 {margin: 0.0px 0.0px 0.0px 0.0px; font: 14.0px Menlo; color: #b76ff7; -webkit-text-stroke: #b76ff7}
-    p.p3 {margin: 0.0px 0.0px 0.0px 0.0px; font: 14.0px Menlo; color: #71c083; -webkit-text-stroke: #71c083}
-    p.p4 {margin: 0.0px 0.0px 0.0px 0.0px; font: 14.0px Menlo; color: #36c0a0; -webkit-text-stroke: #36c0a0}
-    p.p5 {margin: 0.0px 0.0px 0.0px 0.0px; font: 14.0px Menlo; color: #cacaca; -webkit-text-stroke: #cacaca; min-height: 16.0px}
-    p.p6 {margin: 0.0px 0.0px 0.0px 0.0px; font: 14.0px Menlo; color: #6d7378; -webkit-text-stroke: #6d7378}
-    p.p7 {margin: 0.0px 0.0px 0.0px 0.0px; font: 14.0px Menlo; color: #d4d4d4; -webkit-text-stroke: #d4d4d4}
-    p.p8 {margin: 0.0px 0.0px 0.0px 0.0px; font: 14.0px Menlo; color: #ee2e38; -webkit-text-stroke: #ee2e38}
-    span.s1 {font-kerning: none; color: #b76ff7; background-color: #171818; -webkit-text-stroke: 0px #b76ff7}
-    span.s2 {font-kerning: none; background-color: #171818}
-    span.s3 {font-kerning: none; color: #36c0a0; background-color: #171818; -webkit-text-stroke: 0px #36c0a0}
-    span.s4 {font-kerning: none; color: #d4d4d4; background-color: #171818; -webkit-text-stroke: 0px #d4d4d4}
-    span.s5 {font-kerning: none; color: #71c083; background-color: #171818; -webkit-text-stroke: 0px #71c083}
-    span.s6 {font-kerning: none; color: #cacaca; background-color: #171818; -webkit-text-stroke: 0px #cacaca}
-    span.s7 {font-kerning: none}
-    span.s8 {font-kerning: none; color: #f67c30; background-color: #171818; -webkit-text-stroke: 0px #f67c30}
-    span.s9 {font-kerning: none; color: #ee2e38; background-color: #171818; -webkit-text-stroke: 0px #ee2e38}
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X-AI Insights - 订阅中心</title>
+    <!-- 引入样式和库 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- 引入 Firebase 兼容版 SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: black; }
+        .glass-card { background: rgba(24, 24, 27, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(39, 39, 42, 1); }
+    </style>
 </head>
-<body>
-<p class="p1"><span class="s1">import</span><span class="s2"> </span><span class="s3">React</span><span class="s4">,</span><span class="s2"> </span><span class="s4">{</span><span class="s2"> useState</span><span class="s4">,</span><span class="s2"> useEffect </span><span class="s4">}</span><span class="s2"> </span><span class="s1">from</span><span class="s2"> </span><span class="s5">'react'</span><span class="s4">;</span></p>
-<p class="p1"><span class="s1">import</span><span class="s2"> </span><span class="s4">{</span><span class="s2"> initializeApp </span><span class="s4">}</span><span class="s2"> </span><span class="s1">from</span><span class="s2"> </span><span class="s5">'firebase/app'</span><span class="s4">;</span></p>
-<p class="p2"><span class="s2">import</span><span class="s6"> </span><span class="s4">{</span><span class="s6"><span class="Apple-converted-space"> </span></span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span>getFirestore</span><span class="s4">,</span><span class="s2"><span class="Apple-converted-space"> </span></span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span>collection</span><span class="s4">,</span><span class="s2"><span class="Apple-converted-space"> </span></span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span>addDoc</span><span class="s4">,</span><span class="s2"><span class="Apple-converted-space"> </span></span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span>query</span><span class="s4">,</span><span class="s2"><span class="Apple-converted-space"> </span></span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span>where</span><span class="s4">,</span><span class="s2"><span class="Apple-converted-space"> </span></span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span>getDocs</span><span class="s4">,</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span>updateDoc</span><span class="s4">,</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span>serverTimestamp<span class="Apple-converted-space"> </span></span></p>
-<p class="p3"><span class="s4">}</span><span class="s6"> </span><span class="s1">from</span><span class="s6"> </span><span class="s2">'firebase/firestore'</span><span class="s4">;</span></p>
-<p class="p2"><span class="s2">import</span><span class="s6"> </span><span class="s4">{</span><span class="s6"><span class="Apple-converted-space"> </span></span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span>getAuth</span><span class="s4">,</span><span class="s2"><span class="Apple-converted-space"> </span></span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span>signInAnonymously</span><span class="s4">,</span><span class="s2"><span class="Apple-converted-space"> </span></span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span>onAuthStateChanged<span class="Apple-converted-space"> </span></span></p>
-<p class="p3"><span class="s4">}</span><span class="s6"> </span><span class="s1">from</span><span class="s6"> </span><span class="s2">'firebase/auth'</span><span class="s4">;</span></p>
-<p class="p4"><span class="s1">import</span><span class="s6"> </span><span class="s4">{</span><span class="s6"> </span><span class="s2">Mail</span><span class="s4">,</span><span class="s6"> </span><span class="s2">CheckCircle</span><span class="s4">,</span><span class="s6"> </span><span class="s2">AlertCircle</span><span class="s4">,</span><span class="s6"> </span><span class="s2">Loader2</span><span class="s4">,</span><span class="s6"> </span><span class="s2">Twitter</span><span class="s4">,</span><span class="s6"> </span><span class="s2">Sparkles</span><span class="s4">,</span><span class="s6"> </span><span class="s2">Key</span><span class="s4">,</span><span class="s6"> </span><span class="s2">Trash2</span><span class="s6"> </span><span class="s4">}</span><span class="s6"> </span><span class="s1">from</span><span class="s6"> </span><span class="s5">'lucide-react'</span><span class="s4">;</span></p>
-<p class="p5"><span class="s7"></span><br></p>
-<p class="p6"><span class="s2">// ---------------------------------------------------------</span></p>
-<p class="p6"><span class="s2">// 💡 已成功填入您提供的专属 Firebase 配置</span></p>
-<p class="p1"><span class="s1">const</span><span class="s2"> myConfig </span><span class="s4">=</span><span class="s2"> </span><span class="s4">{</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">  </span>apiKey</span><span class="s4">:</span><span class="s6"> </span><span class="s2">"AIzaSyCRi5GAPSMicNMEyiEFibOMRZu8ldpa4i8"</span><span class="s4">,</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">  </span>authDomain</span><span class="s4">:</span><span class="s6"> </span><span class="s2">"my-ai-daily.firebaseapp.com"</span><span class="s4">,</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">  </span>projectId</span><span class="s4">:</span><span class="s6"> </span><span class="s2">"my-ai-daily"</span><span class="s4">,</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">  </span>storageBucket</span><span class="s4">:</span><span class="s6"> </span><span class="s2">"my-ai-daily.firebasestorage.app"</span><span class="s4">,</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span>messagingSenderId</span><span class="s4">:</span><span class="s2"> </span><span class="s5">"818838941572"</span><span class="s4">,</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">  </span>appId</span><span class="s4">:</span><span class="s6"> </span><span class="s2">"1:818838941572:web:a2b3b807b72798f562f7d1"</span><span class="s4">,</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span>measurementId</span><span class="s4">:</span><span class="s2"> </span><span class="s5">"G-NT88GKS05E"</span></p>
-<p class="p7"><span class="s2">};</span></p>
-<p class="p6"><span class="s2">// ---------------------------------------------------------</span></p>
-<p class="p5"><span class="s7"></span><br></p>
-<p class="p1"><span class="s1">const</span><span class="s2"> app </span><span class="s4">=</span><span class="s2"> initializeApp</span><span class="s4">(</span><span class="s2">myConfig</span><span class="s4">);</span></p>
-<p class="p1"><span class="s1">const</span><span class="s2"> auth </span><span class="s4">=</span><span class="s2"> getAuth</span><span class="s4">(</span><span class="s2">app</span><span class="s4">);</span></p>
-<p class="p1"><span class="s1">const</span><span class="s2"> db </span><span class="s4">=</span><span class="s2"> getFirestore</span><span class="s4">(</span><span class="s2">app</span><span class="s4">);</span></p>
-<p class="p5"><span class="s7"></span><br></p>
-<p class="p6"><span class="s2">// 保持 App ID 统一，确保后端脚本能准确读取</span></p>
-<p class="p3"><span class="s1">const</span><span class="s6"> appId </span><span class="s4">=</span><span class="s6"> </span><span class="s2">"ai-daily-app"</span><span class="s4">;</span></p>
-<p class="p5"><span class="s7"></span><br></p>
-<p class="p2"><span class="s2">export</span><span class="s6"> </span><span class="s2">default</span><span class="s6"> </span><span class="s2">function</span><span class="s6"> </span><span class="s3">App</span><span class="s4">()</span><span class="s6"> </span><span class="s4">{</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span></span><span class="s1">const</span><span class="s2"> </span><span class="s4">[</span><span class="s2">email</span><span class="s4">,</span><span class="s2"> setEmail</span><span class="s4">]</span><span class="s2"> </span><span class="s4">=</span><span class="s2"> useState</span><span class="s4">(</span><span class="s5">''</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span></span><span class="s1">const</span><span class="s2"> </span><span class="s4">[</span><span class="s2">otp</span><span class="s4">,</span><span class="s2"> setOtp</span><span class="s4">]</span><span class="s2"> </span><span class="s4">=</span><span class="s2"> useState</span><span class="s4">(</span><span class="s5">''</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span></span><span class="s1">const</span><span class="s2"> </span><span class="s4">[</span><span class="s2">view</span><span class="s4">,</span><span class="s2"> setView</span><span class="s4">]</span><span class="s2"> </span><span class="s4">=</span><span class="s2"> useState</span><span class="s4">(</span><span class="s5">'subscribe'</span><span class="s4">);</span><span class="s2"><span class="Apple-converted-space"> </span></span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span></span><span class="s1">const</span><span class="s2"> </span><span class="s4">[</span><span class="s2">status</span><span class="s4">,</span><span class="s2"> setStatus</span><span class="s4">]</span><span class="s2"> </span><span class="s4">=</span><span class="s2"> useState</span><span class="s4">(</span><span class="s5">'idle'</span><span class="s4">);</span><span class="s2"><span class="Apple-converted-space"> </span></span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span></span><span class="s1">const</span><span class="s2"> </span><span class="s4">[</span><span class="s2">message</span><span class="s4">,</span><span class="s2"> setMessage</span><span class="s4">]</span><span class="s2"> </span><span class="s4">=</span><span class="s2"> useState</span><span class="s4">(</span><span class="s5">''</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span></span><span class="s1">const</span><span class="s2"> </span><span class="s4">[</span><span class="s2">errorCode</span><span class="s4">,</span><span class="s2"> setErrorCode</span><span class="s4">]</span><span class="s2"> </span><span class="s4">=</span><span class="s2"> useState</span><span class="s4">(</span><span class="s5">''</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span></span><span class="s1">const</span><span class="s2"> </span><span class="s4">[</span><span class="s2">user</span><span class="s4">,</span><span class="s2"> setUser</span><span class="s4">]</span><span class="s2"> </span><span class="s4">=</span><span class="s2"> useState</span><span class="s4">(</span><span class="s1">null</span><span class="s4">);</span></p>
-<p class="p5"><span class="s7"></span><br></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span>useEffect</span><span class="s4">(()</span><span class="s2"> </span><span class="s4">=&gt;</span><span class="s2"> </span><span class="s4">{</span></p>
-<p class="p6"><span class="s6"><span class="Apple-converted-space">    </span></span><span class="s2">// 匿名登录以获取基本读写权限</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">    </span>signInAnonymously</span><span class="s4">(</span><span class="s2">auth</span><span class="s4">)</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">      </span></span><span class="s4">.</span><span class="s6">then</span><span class="s4">(()</span><span class="s6"> </span><span class="s4">=&gt;</span><span class="s6"> console</span><span class="s4">.</span><span class="s6">log</span><span class="s4">(</span><span class="s2">"Firebase Auth: 已连接到您的项目"</span><span class="s4">))</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span></span><span class="s4">.</span><span class="s1">catch</span><span class="s4">(</span><span class="s2">err </span><span class="s4">=&gt;</span><span class="s2"> </span><span class="s4">{</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">        </span>console</span><span class="s4">.</span><span class="s2">error</span><span class="s4">(</span><span class="s5">"Firebase Auth Error:"</span><span class="s4">,</span><span class="s2"> err</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">        </span>setErrorCode</span><span class="s4">(</span><span class="s2">err</span><span class="s4">.</span><span class="s2">code</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span></span><span class="s4">});</span></p>
-<p class="p5"><span class="s2"><span class="Apple-converted-space">      </span></span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">    </span></span><span class="s1">return</span><span class="s2"> onAuthStateChanged</span><span class="s4">(</span><span class="s2">auth</span><span class="s4">,</span><span class="s2"> setUser</span><span class="s4">);</span></p>
-<p class="p7"><span class="s6"><span class="Apple-converted-space">  </span></span><span class="s2">},</span><span class="s6"> </span><span class="s2">[]);</span></p>
-<p class="p5"><span class="s7"></span><br></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span></span><span class="s1">const</span><span class="s2"> handleSendCode </span><span class="s4">=</span><span class="s2"> </span><span class="s1">async</span><span class="s2"> </span><span class="s4">(</span><span class="s2">e</span><span class="s4">)</span><span class="s2"> </span><span class="s4">=&gt;</span><span class="s2"> </span><span class="s4">{</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">    </span>e</span><span class="s4">.</span><span class="s2">preventDefault</span><span class="s4">();</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">    </span>setErrorCode</span><span class="s4">(</span><span class="s5">''</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">    </span></span><span class="s1">if</span><span class="s2"> </span><span class="s4">(!</span><span class="s2">email </span><span class="s4">||</span><span class="s2"> </span><span class="s4">!</span><span class="s2">email</span><span class="s4">.</span><span class="s2">includes</span><span class="s4">(</span><span class="s5">'@'</span><span class="s4">))</span><span class="s2"> </span><span class="s4">{</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span>setStatus</span><span class="s4">(</span><span class="s5">'error'</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span>setMessage</span><span class="s4">(</span><span class="s5">'请输入有效的邮箱地址'</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span></span><span class="s1">return</span><span class="s4">;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">    </span></span><span class="s4">}</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">    </span></span><span class="s1">if</span><span class="s2"> </span><span class="s4">(!</span><span class="s2">user</span><span class="s4">)</span><span class="s2"> </span><span class="s4">{</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span>setStatus</span><span class="s4">(</span><span class="s5">'error'</span><span class="s4">);</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">      </span>setMessage</span><span class="s4">(</span><span class="s2">'正在建立安全连接，请稍等几秒...'</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span></span><span class="s1">return</span><span class="s4">;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">    </span></span><span class="s4">}</span></p>
-<p class="p5"><span class="s7"></span><br></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">    </span>setStatus</span><span class="s4">(</span><span class="s5">'loading'</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">    </span></span><span class="s1">try</span><span class="s2"> </span><span class="s4">{</span></p>
-<p class="p6"><span class="s6"><span class="Apple-converted-space">      </span></span><span class="s2">// 生成 6 位随机验证码</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span></span><span class="s1">const</span><span class="s2"> code </span><span class="s4">=</span><span class="s2"> </span><span class="s3">Math</span><span class="s4">.</span><span class="s2">floor</span><span class="s4">(</span><span class="s8">100000</span><span class="s2"> </span><span class="s4">+</span><span class="s2"> </span><span class="s3">Math</span><span class="s4">.</span><span class="s2">random</span><span class="s4">()</span><span class="s2"> </span><span class="s4">*</span><span class="s2"> </span><span class="s8">900000</span><span class="s4">).</span><span class="s2">toString</span><span class="s4">();</span></p>
-<p class="p5"><span class="s2"><span class="Apple-converted-space">      </span></span></p>
-<p class="p6"><span class="s6"><span class="Apple-converted-space">      </span></span><span class="s2">// 写入路径：/artifacts/ai-daily-app/public/data/verification_requests</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">      </span></span><span class="s1">const</span><span class="s6"> requestRef </span><span class="s4">=</span><span class="s6"> collection</span><span class="s4">(</span><span class="s6">db</span><span class="s4">,</span><span class="s6"> </span><span class="s2">'artifacts'</span><span class="s4">,</span><span class="s6"> appId</span><span class="s4">,</span><span class="s6"> </span><span class="s2">'public'</span><span class="s4">,</span><span class="s6"> </span><span class="s2">'data'</span><span class="s4">,</span><span class="s6"> </span><span class="s2">'verification_requests'</span><span class="s4">);</span></p>
-<p class="p5"><span class="s2"><span class="Apple-converted-space">      </span></span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span></span><span class="s1">await</span><span class="s2"> addDoc</span><span class="s4">(</span><span class="s2">requestRef</span><span class="s4">,</span><span class="s2"> </span><span class="s4">{</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">        </span>email</span><span class="s4">:</span><span class="s2"> email</span><span class="s4">.</span><span class="s2">trim</span><span class="s4">().</span><span class="s2">toLowerCase</span><span class="s4">(),</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">        </span>code</span><span class="s4">:</span><span class="s2"> code</span><span class="s4">,</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">        </span>status</span><span class="s4">:</span><span class="s2"> </span><span class="s5">'pending'</span><span class="s4">,</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">        </span>createdAt</span><span class="s4">:</span><span class="s2"> serverTimestamp</span><span class="s4">()</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span></span><span class="s4">});</span></p>
-<p class="p5"><span class="s7"></span><br></p>
-<p class="p6"><span class="s6"><span class="Apple-converted-space">      </span></span><span class="s2">// 本地暂存以便验证</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span>localStorage</span><span class="s4">.</span><span class="s2">setItem</span><span class="s4">(</span><span class="s5">'temp_otp'</span><span class="s4">,</span><span class="s2"> code</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span>localStorage</span><span class="s4">.</span><span class="s2">setItem</span><span class="s4">(</span><span class="s5">'temp_email'</span><span class="s4">,</span><span class="s2"> email</span><span class="s4">.</span><span class="s2">trim</span><span class="s4">().</span><span class="s2">toLowerCase</span><span class="s4">());</span></p>
-<p class="p5"><span class="s2"><span class="Apple-converted-space">      </span></span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span>setView</span><span class="s4">(</span><span class="s5">'verify'</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span>setStatus</span><span class="s4">(</span><span class="s5">'idle'</span><span class="s4">);</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">      </span>setMessage</span><span class="s4">(</span><span class="s2">'验证码请求已提交！请查看您的邮箱或 Colab 控制台。'</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">    </span></span><span class="s4">}</span><span class="s2"> </span><span class="s1">catch</span><span class="s2"> </span><span class="s4">(</span><span class="s2">err</span><span class="s4">)</span><span class="s2"> </span><span class="s4">{</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span>console</span><span class="s4">.</span><span class="s2">error</span><span class="s4">(</span><span class="s2">err</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span>setStatus</span><span class="s4">(</span><span class="s5">'error'</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span>setErrorCode</span><span class="s4">(</span><span class="s2">err</span><span class="s4">.</span><span class="s2">code</span><span class="s4">);</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">      </span></span><span class="s1">if</span><span class="s6"> </span><span class="s4">(</span><span class="s6">err</span><span class="s4">.</span><span class="s6">code </span><span class="s4">===</span><span class="s6"> </span><span class="s2">'permission-denied'</span><span class="s4">)</span><span class="s6"> </span><span class="s4">{</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">        </span>setMessage</span><span class="s4">(</span><span class="s2">'权限被拒绝：请确保 Firebase 控制台的 Rules 已允许 ai-daily-app 路径。'</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span></span><span class="s4">}</span><span class="s2"> </span><span class="s1">else</span><span class="s2"> </span><span class="s4">{</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">        </span>setMessage</span><span class="s4">(</span><span class="s5">`写入失败: </span><span class="s4">${</span><span class="s2">err</span><span class="s4">.</span><span class="s2">message</span><span class="s4">}</span><span class="s5">`</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span></span><span class="s4">}</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">    </span></span><span class="s4">}</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span></span><span class="s4">};</span></p>
-<p class="p5"><span class="s7"></span><br></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span></span><span class="s1">const</span><span class="s2"> handleVerify </span><span class="s4">=</span><span class="s2"> </span><span class="s1">async</span><span class="s2"> </span><span class="s4">(</span><span class="s2">e</span><span class="s4">)</span><span class="s2"> </span><span class="s4">=&gt;</span><span class="s2"> </span><span class="s4">{</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">    </span>e</span><span class="s4">.</span><span class="s2">preventDefault</span><span class="s4">();</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">    </span></span><span class="s1">const</span><span class="s2"> savedCode </span><span class="s4">=</span><span class="s2"> localStorage</span><span class="s4">.</span><span class="s2">getItem</span><span class="s4">(</span><span class="s5">'temp_otp'</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">    </span></span><span class="s1">const</span><span class="s2"> savedEmail </span><span class="s4">=</span><span class="s2"> localStorage</span><span class="s4">.</span><span class="s2">getItem</span><span class="s4">(</span><span class="s5">'temp_email'</span><span class="s4">);</span></p>
-<p class="p5"><span class="s7"></span><br></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">    </span></span><span class="s1">if</span><span class="s2"> </span><span class="s4">(</span><span class="s2">otp </span><span class="s4">!==</span><span class="s2"> savedCode</span><span class="s4">)</span><span class="s2"> </span><span class="s4">{</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span>setStatus</span><span class="s4">(</span><span class="s5">'error'</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span>setMessage</span><span class="s4">(</span><span class="s5">'验证码错误，请重新输入。'</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span></span><span class="s1">return</span><span class="s4">;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">    </span></span><span class="s4">}</span></p>
-<p class="p5"><span class="s7"></span><br></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">    </span>setStatus</span><span class="s4">(</span><span class="s5">'loading'</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">    </span></span><span class="s1">try</span><span class="s2"> </span><span class="s4">{</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span></span><span class="s1">const</span><span class="s2"> subscribersRef </span><span class="s4">=</span><span class="s2"> collection</span><span class="s4">(</span><span class="s2">db</span><span class="s4">,</span><span class="s2"> </span><span class="s5">'artifacts'</span><span class="s4">,</span><span class="s2"> appId</span><span class="s4">,</span><span class="s2"> </span><span class="s5">'public'</span><span class="s4">,</span><span class="s2"> </span><span class="s5">'data'</span><span class="s4">,</span><span class="s2"> </span><span class="s5">'subscribers'</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span></span><span class="s1">const</span><span class="s2"> q </span><span class="s4">=</span><span class="s2"> query</span><span class="s4">(</span><span class="s2">subscribersRef</span><span class="s4">,</span><span class="s2"> where</span><span class="s4">(</span><span class="s5">'email'</span><span class="s4">,</span><span class="s2"> </span><span class="s5">'=='</span><span class="s4">,</span><span class="s2"> savedEmail</span><span class="s4">));</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span></span><span class="s1">const</span><span class="s2"> snap </span><span class="s4">=</span><span class="s2"> </span><span class="s1">await</span><span class="s2"> getDocs</span><span class="s4">(</span><span class="s2">q</span><span class="s4">);</span></p>
-<p class="p5"><span class="s7"></span><br></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span></span><span class="s1">if</span><span class="s2"> </span><span class="s4">(</span><span class="s2">snap</span><span class="s4">.</span><span class="s2">empty</span><span class="s4">)</span><span class="s2"> </span><span class="s4">{</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">        </span></span><span class="s1">await</span><span class="s2"> addDoc</span><span class="s4">(</span><span class="s2">subscribersRef</span><span class="s4">,</span><span class="s2"> </span><span class="s4">{</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">          </span>email</span><span class="s4">:</span><span class="s2"> savedEmail</span><span class="s4">,</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">          </span>active</span><span class="s4">:</span><span class="s2"> </span><span class="s1">true</span><span class="s4">,</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">          </span>subscribedAt</span><span class="s4">:</span><span class="s2"> serverTimestamp</span><span class="s4">()</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">        </span></span><span class="s4">});</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span></span><span class="s4">}</span><span class="s2"> </span><span class="s1">else</span><span class="s2"> </span><span class="s4">{</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">        </span></span><span class="s1">await</span><span class="s2"> updateDoc</span><span class="s4">(</span><span class="s2">snap</span><span class="s4">.</span><span class="s2">docs</span><span class="s4">[</span><span class="s8">0</span><span class="s4">].</span><span class="s2">ref</span><span class="s4">,</span><span class="s2"> </span><span class="s4">{</span><span class="s2"> active</span><span class="s4">:</span><span class="s2"> </span><span class="s1">true</span><span class="s2"> </span><span class="s4">});</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span></span><span class="s4">}</span></p>
-<p class="p5"><span class="s7"></span><br></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span>setStatus</span><span class="s4">(</span><span class="s5">'success'</span><span class="s4">);</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">      </span>setMessage</span><span class="s4">(</span><span class="s2">'订阅成功！您现在可以接收每日 AI 战略简报了。'</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span>setView</span><span class="s4">(</span><span class="s5">'subscribe'</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span>setEmail</span><span class="s4">(</span><span class="s5">''</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span>setOtp</span><span class="s4">(</span><span class="s5">''</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">    </span></span><span class="s4">}</span><span class="s2"> </span><span class="s1">catch</span><span class="s2"> </span><span class="s4">(</span><span class="s2">err</span><span class="s4">)</span><span class="s2"> </span><span class="s4">{</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span>console</span><span class="s4">.</span><span class="s2">error</span><span class="s4">(</span><span class="s2">err</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span>setStatus</span><span class="s4">(</span><span class="s5">'error'</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span>setErrorCode</span><span class="s4">(</span><span class="s2">err</span><span class="s4">.</span><span class="s2">code</span><span class="s4">);</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">      </span>setMessage</span><span class="s4">(</span><span class="s2">'激活失败，请检查数据库权限设置。'</span><span class="s4">);</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">    </span></span><span class="s4">}</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span></span><span class="s4">};</span></p>
-<p class="p5"><span class="s7"></span><br></p>
-<p class="p2"><span class="s6"><span class="Apple-converted-space">  </span></span><span class="s2">return</span><span class="s6"> </span><span class="s4">(</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">    </span></span><span class="s4">&lt;</span><span class="s6">div className</span><span class="s4">=</span><span class="s2">"min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 font-sans"</span><span class="s4">&gt;</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">      </span></span><span class="s4">&lt;</span><span class="s6">div className</span><span class="s4">=</span><span class="s2">"absolute top-10 flex items-center space-x-2 text-blue-400"</span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">        </span></span><span class="s4">&lt;</span><span class="s3">Twitter</span><span class="s2"> size</span><span class="s4">={</span><span class="s8">32</span><span class="s4">}</span><span class="s2"> fill</span><span class="s4">=</span><span class="s5">"currentColor"</span><span class="s2"> /&gt;</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">        </span></span><span class="s4">&lt;</span><span class="s6">span className</span><span class="s4">=</span><span class="s2">"text-xl font-bold tracking-tighter italic"</span><span class="s4">&gt;</span><span class="s3">X</span><span class="s4">-</span><span class="s3">AI</span><span class="s6"> </span><span class="s3">INSIGHTS</span><span class="s4">&lt;/</span><span class="s6">span</span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span></span><span class="s4">&lt;/</span><span class="s2">div</span><span class="s4">&gt;</span></p>
-<p class="p5"><span class="s7"></span><br></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">      </span></span><span class="s4">&lt;</span><span class="s6">main className</span><span class="s4">=</span><span class="s2">"w-full max-w-md bg-zinc-900/60 border border-zinc-800 p-8 rounded-[2rem] shadow-2xl backdrop-blur-lg"</span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">        </span></span><span class="s4">{</span><span class="s2">view </span><span class="s4">===</span><span class="s2"> </span><span class="s5">'subscribe'</span><span class="s2"> </span><span class="s4">?</span><span class="s2"> </span><span class="s4">(</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">          </span>&lt;&gt;</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">            </span></span><span class="s4">&lt;</span><span class="s6">div className</span><span class="s4">=</span><span class="s2">"flex items-center space-x-2 mb-4 text-yellow-500"</span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">              </span></span><span class="s4">&lt;</span><span class="s3">Sparkles</span><span class="s2"> size</span><span class="s4">={</span><span class="s8">16</span><span class="s4">}</span><span class="s2"> /&gt;</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">              </span></span><span class="s4">&lt;</span><span class="s6">span className</span><span class="s4">=</span><span class="s2">"text-xs font-black uppercase tracking-[0.2em]"</span><span class="s4">&gt;</span><span class="s3">Verified</span><span class="s6"> </span><span class="s3">Intelligence</span><span class="s4">&lt;/</span><span class="s6">span</span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">            </span></span><span class="s4">&lt;/</span><span class="s2">div</span><span class="s4">&gt;</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">            </span></span><span class="s4">&lt;</span><span class="s6">h1 className</span><span class="s4">=</span><span class="s2">"text-3xl font-extrabold mb-2 text-white leading-tight"</span><span class="s4">&gt;</span><span class="s9">订阅</span><span class="s6"> </span><span class="s3">AI</span><span class="s6"> </span><span class="s9">战略日报</span><span class="s4">&lt;/</span><span class="s6">h1</span><span class="s4">&gt;</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">            </span></span><span class="s4">&lt;</span><span class="s6">p className</span><span class="s4">=</span><span class="s2">"text-zinc-500 mb-8 text-sm leading-relaxed text-center"</span><span class="s4">&gt;</span></p>
-<p class="p8"><span class="s6"><span class="Apple-converted-space">              </span></span><span class="s2">由</span><span class="s6"> </span><span class="s3">PM</span><span class="s6"> </span><span class="s2">视角深度拆解</span><span class="s6"> </span><span class="s3">AI</span><span class="s6"> </span><span class="s2">大佬动态。</span><span class="s4">&lt;</span><span class="s6">br/&gt;</span><span class="s2">输入邮箱获取验证码开启推送。</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">            </span></span><span class="s4">&lt;/</span><span class="s2">p</span><span class="s4">&gt;</span></p>
-<p class="p5"><span class="s7"></span><br></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">            </span></span><span class="s4">&lt;</span><span class="s2">form onSubmit</span><span class="s4">={</span><span class="s2">handleSendCode</span><span class="s4">}</span><span class="s2"> className</span><span class="s4">=</span><span class="s5">"space-y-4"</span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">              </span></span><span class="s4">&lt;</span><span class="s2">div className</span><span class="s4">=</span><span class="s5">"relative group"</span><span class="s4">&gt;</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">                </span></span><span class="s4">&lt;</span><span class="s3">Mail</span><span class="s6"> className</span><span class="s4">=</span><span class="s2">"absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-blue-500 transition-colors"</span><span class="s6"> size</span><span class="s4">={</span><span class="s8">20</span><span class="s4">}</span><span class="s6"> /&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">                </span></span><span class="s4">&lt;</span><span class="s2">input</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">                  </span></span><span class="s1">type</span><span class="s4">=</span><span class="s5">"email"</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">                  </span>placeholder</span><span class="s4">=</span><span class="s5">"name@company.com"</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">                  </span>value</span><span class="s4">={</span><span class="s2">email</span><span class="s4">}</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">                  </span>onChange</span><span class="s4">={(</span><span class="s2">e</span><span class="s4">)</span><span class="s2"> </span><span class="s4">=&gt;</span><span class="s2"> setEmail</span><span class="s4">(</span><span class="s2">e</span><span class="s4">.</span><span class="s2">target</span><span class="s4">.</span><span class="s2">value</span><span class="s4">)}</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">                  </span>className</span><span class="s4">=</span><span class="s2">"w-full bg-black border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 outline-none focus:border-blue-500 transition-all text-white placeholder:text-zinc-800"</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">                  </span>disabled</span><span class="s4">={</span><span class="s2">status </span><span class="s4">===</span><span class="s2"> </span><span class="s5">'loading'</span><span class="s4">}</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">                </span>/&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">              </span></span><span class="s4">&lt;/</span><span class="s2">div</span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">              </span></span><span class="s4">&lt;</span><span class="s2">button</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">                </span></span><span class="s1">type</span><span class="s4">=</span><span class="s5">"submit"</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">                </span>disabled</span><span class="s4">={</span><span class="s2">status </span><span class="s4">===</span><span class="s2"> </span><span class="s5">'loading'</span><span class="s4">}</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">                </span>className</span><span class="s4">=</span><span class="s2">"w-full bg-white text-black font-extrabold py-4 rounded-2xl hover:bg-blue-400 hover:text-white transition-all active:scale-95 flex items-center justify-center"</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">              </span></span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">                </span></span><span class="s4">{</span><span class="s2">status </span><span class="s4">===</span><span class="s2"> </span><span class="s5">'loading'</span><span class="s2"> </span><span class="s4">?</span><span class="s2"> </span><span class="s4">&lt;</span><span class="s3">Loader2</span><span class="s2"> className</span><span class="s4">=</span><span class="s5">"animate-spin"</span><span class="s2"> /&gt; </span><span class="s4">:</span><span class="s2"> </span><span class="s5">"获取验证码"</span><span class="s4">}</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">              </span></span><span class="s4">&lt;/</span><span class="s2">button</span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">            </span></span><span class="s4">&lt;/</span><span class="s2">form</span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">          </span>&lt;/&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">        </span></span><span class="s4">)</span><span class="s2"> </span><span class="s4">:</span><span class="s2"> </span><span class="s4">(</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">          </span>&lt;&gt;</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">            </span></span><span class="s4">&lt;</span><span class="s6">div className</span><span class="s4">=</span><span class="s2">"flex items-center space-x-2 mb-4 text-blue-400"</span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">              </span></span><span class="s4">&lt;</span><span class="s3">Key</span><span class="s2"> size</span><span class="s4">={</span><span class="s8">16</span><span class="s4">}</span><span class="s2"> /&gt;</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">              </span></span><span class="s4">&lt;</span><span class="s6">span className</span><span class="s4">=</span><span class="s2">"text-xs font-bold uppercase tracking-widest"</span><span class="s4">&gt;</span><span class="s9">身份验证</span><span class="s4">&lt;/</span><span class="s6">span</span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">            </span></span><span class="s4">&lt;/</span><span class="s2">div</span><span class="s4">&gt;</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">            </span></span><span class="s4">&lt;</span><span class="s6">h1 className</span><span class="s4">=</span><span class="s2">"text-2xl font-bold mb-2 text-center"</span><span class="s4">&gt;</span><span class="s9">验证您的邮箱</span><span class="s4">&lt;/</span><span class="s6">h1</span><span class="s4">&gt;</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">            </span></span><span class="s4">&lt;</span><span class="s6">p className</span><span class="s4">=</span><span class="s2">"text-zinc-500 mb-8 text-sm text-center"</span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">              </span></span><span class="s9">已向</span><span class="s2"> </span><span class="s4">&lt;</span><span class="s2">b</span><span class="s4">&gt;{</span><span class="s2">email</span><span class="s4">}&lt;/</span><span class="s2">b</span><span class="s4">&gt;</span><span class="s2"> </span><span class="s9">提交验证请求。</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">            </span></span><span class="s4">&lt;/</span><span class="s2">p</span><span class="s4">&gt;</span></p>
-<p class="p5"><span class="s7"></span><br></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">            </span></span><span class="s4">&lt;</span><span class="s2">form onSubmit</span><span class="s4">={</span><span class="s2">handleVerify</span><span class="s4">}</span><span class="s2"> className</span><span class="s4">=</span><span class="s5">"space-y-4"</span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">              </span></span><span class="s4">&lt;</span><span class="s2">input</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">                </span></span><span class="s1">type</span><span class="s4">=</span><span class="s5">"text"</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">                </span>placeholder</span><span class="s4">=</span><span class="s5">"000000"</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">                </span>maxLength</span><span class="s4">={</span><span class="s8">6</span><span class="s4">}</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">                </span>value</span><span class="s4">={</span><span class="s2">otp</span><span class="s4">}</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">                </span>onChange</span><span class="s4">={(</span><span class="s2">e</span><span class="s4">)</span><span class="s2"> </span><span class="s4">=&gt;</span><span class="s2"> setOtp</span><span class="s4">(</span><span class="s2">e</span><span class="s4">.</span><span class="s2">target</span><span class="s4">.</span><span class="s2">value</span><span class="s4">)}</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">                </span>className</span><span class="s4">=</span><span class="s2">"w-full bg-black border border-zinc-800 rounded-2xl py-4 text-center text-2xl tracking-[0.5em] font-mono outline-none focus:border-blue-500 text-white"</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">                </span>disabled</span><span class="s4">={</span><span class="s2">status </span><span class="s4">===</span><span class="s2"> </span><span class="s5">'loading'</span><span class="s4">}</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">              </span>/&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">              </span></span><span class="s4">&lt;</span><span class="s2">button</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">                </span></span><span class="s1">type</span><span class="s4">=</span><span class="s5">"submit"</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">                </span>className</span><span class="s4">=</span><span class="s2">"w-full bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-500 transition-all"</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">              </span></span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">                </span></span><span class="s4">{</span><span class="s2">status </span><span class="s4">===</span><span class="s2"> </span><span class="s5">'loading'</span><span class="s2"> </span><span class="s4">?</span><span class="s2"> </span><span class="s4">&lt;</span><span class="s3">Loader2</span><span class="s2"> className</span><span class="s4">=</span><span class="s5">"animate-spin m-auto"</span><span class="s2"> /&gt; </span><span class="s4">:</span><span class="s2"> </span><span class="s5">"确认激活订阅"</span><span class="s4">}</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">              </span></span><span class="s4">&lt;/</span><span class="s2">button</span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">              </span></span><span class="s4">&lt;</span><span class="s2">button<span class="Apple-converted-space"> </span></span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">                </span></span><span class="s1">type</span><span class="s4">=</span><span class="s5">"button"</span><span class="s2"><span class="Apple-converted-space"> </span></span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">                </span>onClick</span><span class="s4">={()</span><span class="s2"> </span><span class="s4">=&gt;</span><span class="s2"> setView</span><span class="s4">(</span><span class="s5">'subscribe'</span><span class="s4">)}</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">                </span>className</span><span class="s4">=</span><span class="s2">"w-full text-zinc-600 text-sm hover:text-zinc-400 transition-colors mt-2"</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">              </span></span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">                </span></span><span class="s9">返回修改邮箱</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">              </span></span><span class="s4">&lt;/</span><span class="s2">button</span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">            </span></span><span class="s4">&lt;/</span><span class="s2">form</span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">          </span>&lt;/&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">        </span></span><span class="s4">)}</span></p>
-<p class="p5"><span class="s7"></span><br></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">        </span></span><span class="s4">{</span><span class="s2">message </span><span class="s4">&amp;&amp;</span><span class="s2"> </span><span class="s4">(</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">          </span></span><span class="s4">&lt;</span><span class="s6">div className</span><span class="s4">={</span><span class="s2">`mt-6 p-4 rounded-xl flex items-start space-x-2 text-xs border </span><span class="s4">${</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">            </span>status </span><span class="s4">===</span><span class="s6"> </span><span class="s2">'success'</span><span class="s6"> </span><span class="s4">?</span><span class="s6"> </span><span class="s2">'bg-green-500/10 border-green-500/20 text-green-400'</span><span class="s6"> </span><span class="s4">:</span><span class="s6"> </span><span class="s2">'bg-red-500/10 border-red-500/20 text-red-400'</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">          </span></span><span class="s4">}</span><span class="s5">`</span><span class="s4">}&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">            </span></span><span class="s4">{</span><span class="s2">status </span><span class="s4">===</span><span class="s2"> </span><span class="s5">'success'</span><span class="s2"> </span><span class="s4">?</span><span class="s2"> </span><span class="s4">&lt;</span><span class="s3">CheckCircle</span><span class="s2"> size</span><span class="s4">={</span><span class="s8">16</span><span class="s4">}</span><span class="s2"> /&gt; </span><span class="s4">:</span><span class="s2"> </span><span class="s4">&lt;</span><span class="s3">AlertCircle</span><span class="s2"> size</span><span class="s4">={</span><span class="s8">16</span><span class="s4">}</span><span class="s2"> /&gt;</span><span class="s4">}</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">            </span></span><span class="s4">&lt;</span><span class="s2">div className</span><span class="s4">=</span><span class="s5">"flex flex-col"</span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">              </span></span><span class="s4">&lt;</span><span class="s2">span</span><span class="s4">&gt;{</span><span class="s2">message</span><span class="s4">}&lt;/</span><span class="s2">span</span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">              </span></span><span class="s4">{</span><span class="s2">errorCode </span><span class="s4">&amp;&amp;</span><span class="s2"> </span><span class="s4">&lt;</span><span class="s2">span className</span><span class="s4">=</span><span class="s5">"opacity-50 mt-1 font-mono text-[10px]"</span><span class="s4">&gt;</span><span class="s3">Code</span><span class="s4">:</span><span class="s2"> </span><span class="s4">{</span><span class="s2">errorCode</span><span class="s4">}&lt;/</span><span class="s2">span</span><span class="s4">&gt;}</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">            </span></span><span class="s4">&lt;/</span><span class="s2">div</span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">          </span></span><span class="s4">&lt;/</span><span class="s2">div</span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">        </span></span><span class="s4">)}</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span></span><span class="s4">&lt;/</span><span class="s2">main</span><span class="s4">&gt;</span></p>
-<p class="p5"><span class="s7"></span><br></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">      </span></span><span class="s4">&lt;</span><span class="s6">footer className</span><span class="s4">=</span><span class="s2">"mt-10 opacity-30 text-center"</span><span class="s4">&gt;</span></p>
-<p class="p3"><span class="s6"><span class="Apple-converted-space">        </span></span><span class="s4">&lt;</span><span class="s6">p className</span><span class="s4">=</span><span class="s2">"text-[10px] text-zinc-500 uppercase tracking-widest leading-loose"</span><span class="s4">&gt;</span></p>
-<p class="p4"><span class="s6"><span class="Apple-converted-space">          </span></span><span class="s2">Intelligence</span><span class="s6"> </span><span class="s1">for</span><span class="s6"> </span><span class="s2">Builders</span><span class="s6"> </span><span class="s4">&amp;</span><span class="s6"> </span><span class="s2">Visionaries</span><span class="s4">&lt;</span><span class="s6">br/&gt;</span></p>
-<p class="p4"><span class="s6"><span class="Apple-converted-space">          </span></span><span class="s2">Powered</span><span class="s6"> by </span><span class="s2">Gemini</span><span class="s6"> </span><span class="s8">2.5</span><span class="s6"> </span><span class="s4">&amp;</span><span class="s6"> </span><span class="s2">Firebase</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">        </span></span><span class="s4">&lt;/</span><span class="s2">p</span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">      </span></span><span class="s4">&lt;/</span><span class="s2">footer</span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">    </span></span><span class="s4">&lt;/</span><span class="s2">div</span><span class="s4">&gt;</span></p>
-<p class="p1"><span class="s2"><span class="Apple-converted-space">  </span></span><span class="s4">);</span></p>
-<p class="p7"><span class="s2">}</span></p>
+<body class="text-white">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // --- 1. 填入您的专属 Firebase 配置 ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyCRi5GAPSMicNMEyiEFibOMRZu8ldpa4i8",
+            authDomain: "my-ai-daily.firebaseapp.com",
+            projectId: "my-ai-daily",
+            storageBucket: "my-ai-daily.firebasestorage.app",
+            messagingSenderId: "818838941572",
+            appId: "1:818838941572:web:a2b3b807b72798f562f7d1",
+            measurementId: "G-NT88GKS05E"
+        };
+
+        // 初始化
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+        const appId = "ai-daily-app";
+
+        const { useState, useEffect } = React;
+
+        // 图标组件
+        const Icon = ({ name, size = 20, className = "" }) => {
+            useEffect(() => {
+                if (window.lucide) window.lucide.createIcons();
+            }, [name]);
+            return <i data-lucide={name} style={{width: size, height: size}} className={className}></i>;
+        };
+
+        function App() {
+            const [email, setEmail] = useState('');
+            const [otp, setOtp] = useState('');
+            const [view, setView] = useState('subscribe'); 
+            const [status, setStatus] = useState('idle'); 
+            const [message, setMessage] = useState('');
+            const [errorCode, setErrorCode] = useState('');
+
+            useEffect(() => {
+                auth.signInAnonymously().catch(err => setErrorCode(err.code));
+            }, []);
+
+            const handleSendCode = async (e) => {
+                e.preventDefault();
+                if (!email || !email.includes('@')) {
+                    setStatus('error');
+                    setMessage('请输入有效的邮箱地址');
+                    return;
+                }
+                setStatus('loading');
+                try {
+                    const code = Math.floor(100000 + Math.random() * 900000).toString();
+                    // 写入验证请求
+                    await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('verification_requests').add({
+                        email: email.trim().toLowerCase(),
+                        code: code,
+                        status: 'pending',
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    
+                    localStorage.setItem('temp_otp', code);
+                    localStorage.setItem('temp_email', email.trim().toLowerCase());
+                    setView('verify');
+                    setStatus('idle');
+                    setMessage('验证码请求已提交！请检查邮箱。');
+                } catch (err) {
+                    console.error(err);
+                    setStatus('error');
+                    setErrorCode(err.code);
+                    setMessage('连接失败，请确保 Firebase Rules 已正确发布。');
+                }
+            };
+
+            const handleVerify = async (e) => {
+                e.preventDefault();
+                const savedCode = localStorage.getItem('temp_otp');
+                const savedEmail = localStorage.getItem('temp_email');
+                if (otp !== savedCode) {
+                    setStatus('error');
+                    setMessage('验证码不正确');
+                    return;
+                }
+                setStatus('loading');
+                try {
+                    const subsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('subscribers');
+                    const snapshot = await subsRef.where('email', '==', savedEmail).get();
+                    if (snapshot.empty) {
+                        await subsRef.add({ 
+                            email: savedEmail, 
+                            active: true, 
+                            subscribedAt: firebase.firestore.FieldValue.serverTimestamp() 
+                        });
+                    } else {
+                        await snapshot.docs[0].ref.update({ active: true });
+                    }
+                    setStatus('success');
+                    setMessage('验证成功！您已正式加入订阅。');
+                    setView('subscribe');
+                    setEmail('');
+                    setOtp('');
+                } catch (err) {
+                    setStatus('error');
+                    setErrorCode(err.code);
+                    setMessage('保存失败，请检查数据库权限。');
+                }
+            };
+
+            return (
+                <div className="min-h-screen flex flex-col items-center justify-center p-6">
+                    {/* Logo 区域 */}
+                    <div className="absolute top-10 flex items-center space-x-2 text-blue-400">
+                        <Icon name="twitter" size={32} className="fill-current" />
+                        <span className="text-xl font-black tracking-tighter italic">X-AI INSIGHTS</span>
+                    </div>
+
+                    {/* 主卡片 */}
+                    <main className="w-full max-w-md glass-card p-8 rounded-[2.5rem] shadow-2xl">
+                        {view === 'subscribe' ? (
+                            <div className="text-center">
+                                <div className="flex items-center justify-center space-x-2 mb-4 text-yellow-500">
+                                    <Icon name="sparkles" size={16} />
+                                    <span className="text-[10px] font-black uppercase tracking-[0.3em]">AI Intelligence</span>
+                                </div>
+                                <h1 className="text-3xl font-black mb-3 text-white leading-tight">掌握 AI 进化脉络</h1>
+                                <p className="text-zinc-500 mb-8 text-sm leading-relaxed px-4 text-center">
+                                    聚合全球 AI 领袖动态。由 PM 视角深度拆解商业逻辑。每日 09:00 送达。
+                                </p>
+                                
+                                <form onSubmit={handleSendCode} className="space-y-4">
+                                    <div className="relative group">
+                                        <Icon name="mail" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-blue-500 transition-colors" />
+                                        <input
+                                            type="email"
+                                            placeholder="输入邮箱开启推送"
+                                            value={email}
+                                            onChange={(e) => setEmail(e.target.value)}
+                                            className="w-full bg-black border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 outline-none focus:border-blue-500 text-white placeholder:text-zinc-700 transition-all"
+                                        />
+                                    </div>
+                                    <button type="submit" className="w-full bg-white text-black font-black py-4 rounded-2xl hover:bg-blue-400 hover:text-white transition-all transform active:scale-95">
+                                        {status === 'loading' ? '正在连接...' : '获取验证码'}
+                                    </button>
+                                </form>
+                            </div>
+                        ) : (
+                            <div className="text-center">
+                                <div className="w-12 h-12 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                                    <Icon name="key" size={24} className="text-blue-500" />
+                                </div>
+                                <h1 className="text-2xl font-black mb-2 text-white text-center">确认验证码</h1>
+                                <p className="text-zinc-500 mb-8 text-xs text-center">验证码已发送至 <b>{email}</b></p>
+                                <form onSubmit={handleVerify} className="space-y-4">
+                                    <input
+                                        type="text"
+                                        placeholder="000000"
+                                        maxLength="6"
+                                        value={otp}
+                                        onChange={(e) => setOtp(e.target.value)}
+                                        className="w-full bg-black border border-zinc-800 rounded-2xl py-5 text-center text-3xl tracking-[0.6em] font-mono outline-none focus:border-blue-500 text-white"
+                                    />
+                                    <button type="submit" className="w-full bg-blue-600 text-white font-black py-4 rounded-2xl hover:bg-blue-500 transition-all">
+                                        确认激活订阅
+                                    </button>
+                                    <button type="button" onClick={() => setView('subscribe')} className="text-zinc-600 text-xs hover:text-zinc-400 transition-colors">返回修改邮箱</button>
+                                </form>
+                            </div>
+                        )}
+
+                        {/* 消息提示 */}
+                        {message && (
+                            <div className={`mt-8 p-4 rounded-2xl text-[11px] font-medium flex items-start space-x-2 border animate-in fade-in slide-in-from-bottom-2 ${
+                                status === 'success' ? 'bg-green-500/5 border-green-500/20 text-green-400' : 'bg-red-500/5 border-red-500/20 text-red-400'
+                            }`}>
+                                <Icon name={status === 'success' ? 'check-circle' : 'alert-circle'} size={14} className="mt-0.5 shrink-0" />
+                                <span>{message} {errorCode && `[Error: ${errorCode}]`}</span>
+                            </div>
+                        )}
+                    </main>
+
+                    <p className="mt-10 text-[10px] text-zinc-600 uppercase tracking-widest font-bold opacity-40">
+                        Stay ahead of the curve with X-AI
+                    </p>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
 </body>
 </html>
