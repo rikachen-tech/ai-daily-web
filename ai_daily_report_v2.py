@@ -107,7 +107,7 @@ def fetch_gemini_summary(new_content, date_label):
     5. 行业洞察：商业模式、估值与市场反馈。
 
     # Daily Report Structure (严格按此 HTML 格式输出)
-    1. 📅 [日期] AI 行业早报：从搜索迈向 Agent
+    1. 📅 [日期] AI 行业早报：[今日重点]
     2. 🔥 今日核心趋势 (Top 3)：动态描述 + 为什么对 PM 重要。
     3. 🛠 专家深度见解 (Expert Insights)：总结 Andrej Karpathy 等人的观点，需附带原文超链接。
     4. 🔍 搜索 vs. AI 专题 (Search to AI Bridge)：【针对性模块】挖掘搜索、推荐、RAG 相关动态。
