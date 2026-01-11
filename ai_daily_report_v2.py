@@ -30,7 +30,10 @@ WEB_URL = "https://rikachen-tech.github.io/ai-daily-web/"
 AI_INFLUENCERS = [
     "OpenAI", "sama", "AnthropicAI", "DeepMind", "demishassabis", "MetaAI", "ylecun", "MistralAI", "huggingface", "clem_delangue",
     "karpathy", "AravSrinivas", "mustafasuleyman", "gdb", "therundownai", "rowancheung", "pete_huang", "tldr", "bentossell",
-    "alliekmiller", "LinusEkenstam", "shreyas", "lennysan","garrytan","danshipper","Greg Isenberg","Justine Moore"
+    "alliekmiller", "LinusEkenstam", "shreyas", "lennysan","garrytan","danshipper","Greg Isenberg", "Justine Moore", "Andrej Karpathy", "Swyx", "Greg Isenberg", "Lenny Rachitsky", 
+    "Josh Woordward","Kevin Weil","Peter Yang", "Nan Yu","Madhu Guru", "Mckay Wrigley","Steven Johnson", "Amanda Askell", "Cat Wu", "Thariq", "Google Labs", "George Mack", "Raiza Martin",
+    "Amjad Masad", "Guillermo Rauch", "Riley Brown", "Alex Albert", "Hamel Husain", "Aaron Levie", "Ryo Lu", "Lulu Cheng Meservey", "Justine Moore", "Matt Turck", "Julie Zhuo", "Gabriel Peters", 
+    "PJ Ace", "Zara Zhang"
 ]
 
 # --- 2. 初始化 Firebase ---
@@ -87,22 +90,27 @@ def get_tweets(target_date_obj):
     return all_text
 
 def fetch_gemini_summary(new_content, date_label):
-    """调用 Gemini 进行 PM 视角深度拆解"""
+    """调用 Gemini 进行 PM 视角深度拆解，并确保包含原文超链接"""
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={GEMINI_API_KEY}"
     
-    # 恢复产品经理视角 Prompt
+    # 强化 PM 视角及超链接引用指令
     system_prompt = """
-    你是一个顶级 AI 行业分析师和产品经理（PM）。请对提供的推文动态进行深度拆解。
-    分析要求：
+    你是一个顶级 AI 行业分析师和顶尖的产品经理（PM）。你的风格是：言简意赅、直击本质、拒绝废话。请对提供的推文动态进行深度拆解。
+    
+    核心规则：
     1. 视角：从产品价值、商业模式、用户体验和市场格局四个维度进行分析。
-    2. 过滤：优先关注应用层和商业化的变动，减少纯学术研究讨论。
-    3. 格式：使用 HTML 格式。包含以下模块：
+    2. 溯源：在分析具体观点或动态时，必须引用原文链接。请使用 HTML 超链接格式 `<a href="链接地址">查看原文</a>` 附在对应的分析段落末尾。
+    3. 过滤：优先关注应用层和商业化的变动，减少纯学术和代码研究讨论。
+    4. 格式：输出完整的 HTML 代码。包含以下模块，且每个模块至少包含 1-2 个具体的推文引用：
        - 📌 今日提纲
        - 🚀 Major Shifts (重大转向)
        - 💼 Business & Applications (商业与应用)
        - 🎨 UX & Interaction (体验与交互)
        - 📊 Market Dynamics (市场动态)
+    
+    注意：不要输出 Markdown 的 ```html 包裹标签，直接输出 HTML 内容。
     """
+    
     
     payload = {
         "contents": [{"parts": [{"text": f"报告日期：{date_label}\n昨日推文动态：\n{new_content}"}]}],
