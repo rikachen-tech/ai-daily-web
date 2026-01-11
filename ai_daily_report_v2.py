@@ -24,10 +24,14 @@ SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 APP_ID = "ai-daily-app"
 # 替换为您部署后的正式网页地址
-WEB_URL = "https://yourname.github.io/ai-daily-web" 
+WEB_URL = "https://rikachen-tech.github.io/ai-daily-web/" 
 
-# 核心大佬名单
-AI_INFLUENCERS = ["OpenAI", "sama", "AnthropicAI", "DeepMind", "ylecun", "karpathy", "AravSrinivas"]
+# 核心大佬名单 (已恢复完整 20+ 名单)
+AI_INFLUENCERS = [
+    "OpenAI", "sama", "AnthropicAI", "DeepMind", "demishassabis", "MetaAI", "ylecun", "MistralAI", "huggingface", "clem_delangue",
+    "karpathy", "AravSrinivas", "mustafasuleyman", "gdb", "therundownai", "rowancheung", "pete_huang", "tldr", "bentossell",
+    "alliekmiller", "LinusEkenstam", "shreyas", "lennysan"
+]
 
 # --- 2. 初始化 Firebase ---
 if not firebase_admin._apps:
@@ -40,7 +44,8 @@ if not firebase_admin._apps:
         exit(1)
 db = firestore.client()
 
-# --- 3. 邮件工具 ---
+# --- 3. 核心工具函数 ---
+
 def send_email(to_email, subject, html_content):
     msg = MIMEMultipart('alternative')
     msg['Subject'] = Header(subject, 'utf-8').encode()
@@ -56,6 +61,60 @@ def send_email(to_email, subject, html_content):
     except Exception as e:
         print(f"📧 发送邮件至 {to_email} 失败: {e}")
         return False
+
+def get_tweets(target_date_obj):
+    """抓取目标日期的推文数据"""
+    all_text = ""
+    start = target_date_obj.replace(hour=0, minute=0, second=0)
+    end = target_date_obj.replace(hour=23, minute=59, second=59)
+    print(f"📡 正在抓取推文数据 ({start.strftime('%Y-%m-%d')})...")
+    
+    for user in AI_INFLUENCERS:
+        try:
+            res = requests.get(f"https://{RAPIDAPI_HOST}/timeline.php", 
+                               headers={"X-RapidAPI-Key": RAPIDAPI_KEY, "X-RapidAPI-Host": RAPIDAPI_HOST}, 
+                               params={"screenname": user}, timeout=20)
+            if res.status_code == 200:
+                data = res.json()
+                for tweet in data.get('timeline', [])[:3]:
+                    # Twitter 时间解析
+                    c_at = datetime.strptime(tweet['created_at'], "%a %b %d %H:%M:%S +0000 %Y").replace(tzinfo=timezone.utc)
+                    if start <= c_at <= end:
+                        content = tweet.get('text') or tweet.get('full_text', "")
+                        all_text += f"作者: @{user} | 内容: {content}\n"
+            time.sleep(1.2) # 频率限制
+        except: continue
+    return all_text
+
+def fetch_gemini_summary(new_content, date_label):
+    """调用 Gemini 进行 PM 视角深度拆解"""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={GEMINI_API_KEY}"
+    
+    # 恢复产品经理视角 Prompt
+    system_prompt = """
+    你是一个顶级 AI 行业分析师和产品经理（PM）。请对提供的推文动态进行深度拆解。
+    分析要求：
+    1. 视角：从产品价值、商业模式、用户体验和市场格局四个维度进行分析。
+    2. 过滤：优先关注应用层和商业化的变动，减少纯学术研究讨论。
+    3. 格式：使用 HTML 格式。包含以下模块：
+       - 📌 今日提纲
+       - 🚀 Major Shifts (重大转向)
+       - 💼 Business & Applications (商业与应用)
+       - 🎨 UX & Interaction (体验与交互)
+       - 📊 Market Dynamics (市场动态)
+    """
+    
+    payload = {
+        "contents": [{"parts": [{"text": f"报告日期：{date_label}\n昨日推文动态：\n{new_content}"}]}],
+        "systemInstruction": {"parts": [{"text": system_prompt}]}
+    }
+    try:
+        res = requests.post(url, json=payload, timeout=60)
+        report = res.json()['candidates'][0]['content']['parts'][0]['text']
+        return report.replace('```html', '').replace('```', '').strip()
+    except Exception as e:
+        print(f"❌ Gemini 分析请求失败: {e}")
+        return None
 
 # --- 4. 业务逻辑 ---
 
@@ -75,32 +134,41 @@ def handle_otps():
             count += 1
     print(f"✅ 已处理 {count} 个验证码请求")
 
+def crawl_and_generate_report(target_date_obj):
+    """核心：生成当日简报（分析昨日数据）"""
+    date_str = target_date_obj.strftime('%Y-%m-%d')
+    print(f"🚀 正在生成今日简报 ({date_str})...")
+    
+    # 抓取昨天的推文
+    yesterday_data = get_tweets(target_date_obj - timedelta(days=1))
+    
+    if not yesterday_data:
+        print("📭 昨日无有效推文动态。")
+        return None, date_str
+    
+    # AI 深度分析
+    report_html = fetch_gemini_summary(yesterday_data, date_str)
+    
+    if report_html:
+        db.collection("daily_history").document(date_str).set({
+            "content": report_html,
+            "timestamp": firestore.SERVER_TIMESTAMP
+        })
+    return report_html, date_str
+
 def get_latest_report_content():
     """获取最新的一份日报（今天或昨天）"""
     bj_now = datetime.now(timezone(timedelta(hours=8)))
     today_str = bj_now.strftime('%Y-%m-%d')
     yesterday_str = (bj_now - timedelta(days=1)).strftime('%Y-%m-%d')
 
-    # 先查今天，再查昨天
-    for date_str in [today_str, yesterday_str]:
-        doc = db.collection("daily_history").document(date_str).get()
-        if doc.exists:
-            return doc.to_dict().get("content"), date_str
+    # 先查今日数据库
+    doc = db.collection("daily_history").document(today_str).get()
+    if doc.exists:
+        return doc.to_dict().get("content"), today_str
     
-    # 如果都没有，则抓取数据生成一份 (初次运行逻辑)
+    # 数据库没有，则现场抓取昨日数据生成今日日报
     return crawl_and_generate_report(bj_now)
-
-def crawl_and_generate_report(target_date_obj):
-    """真正的抓取和生成逻辑"""
-    print(f"📡 正在抓取推文并生成新简报 ({target_date_obj.strftime('%Y-%m-%d')})...")
-    # 此处省略复杂的推文抓取代码，逻辑同前
-    # 模拟生成的报告内容
-    content = "<h3>今日 AI 行业深度动态</h3><p>内容由 Gemini 2.5 分析生成...</p>" 
-    db.collection("daily_history").document(target_date_obj.strftime('%Y-%m-%d')).set({
-        "content": content,
-        "timestamp": firestore.SERVER_TIMESTAMP
-    })
-    return content, target_date_obj.strftime('%Y-%m-%d')
 
 def handle_new_subscribers(report_html, report_date):
     """给新用户即刻推送 (目标：验证后 10min 内收到)"""
@@ -124,18 +192,25 @@ def handle_new_subscribers(report_html, report_date):
     print(f"✅ 已为 {count} 位新订阅者推送首份日报")
 
 if __name__ == "__main__":
+    bj_now = datetime.now(timezone(timedelta(hours=8)))
+    print(f"🕒 执行时间: {bj_now.strftime('%Y-%m-%d %H:%M:%S')}")
+
     # 1. 优先发送验证码 (满足 1min 左右时效)
     handle_otps()
     
-    # 2. 获取或生成日报
+    # 2. 获取或生成当日日报 (分析昨日动态)
     report_html, report_date = get_latest_report_content()
     
     # 3. 检查是否有新用户需要补发日报 (满足 10min 内时效)
     if report_html:
         handle_new_subscribers(report_html, report_date)
     
-    # 4. 定时群发逻辑 (每天 9 点触发)
-    bj_now = datetime.now(timezone(timedelta(hours=8)))
+    # 4. 每日定时群发逻辑 (北京时间 9 点)
     if bj_now.hour == 9 and bj_now.minute < 10:
-        print("📢 触发每日例行群发...")
-        # 此处可以增加群发所有 active 用户的逻辑
+        print("📢 触发每日例行全员群发...")
+        if report_html:
+            subs_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("subscribers")
+            docs = subs_ref.where(filter=FieldFilter("active", "==", True)).stream()
+            for doc in docs:
+                email = doc.to_dict()['email']
+                send_email(email, f"✨ AI 战略观察日报 [{report_date}]", report_html)
