@@ -30,7 +30,7 @@ WEB_URL = "https://rikachen-tech.github.io/ai-daily-web/"
 AI_INFLUENCERS = [
     "OpenAI", "sama", "AnthropicAI", "DeepMind", "demishassabis", "MetaAI", "ylecun", "MistralAI", "huggingface", "clem_delangue",
     "karpathy", "AravSrinivas", "mustafasuleyman", "gdb", "therundownai", "rowancheung", "pete_huang", "tldr", "bentossell",
-    "alliekmiller", "LinusEkenstam", "shreyas", "lennysan"
+    "alliekmiller", "LinusEkenstam", "shreyas", "lennysan","garrytan","danshipper","Greg Isenberg","Justine Moore"
 ]
 
 # --- 2. 初始化 Firebase ---
