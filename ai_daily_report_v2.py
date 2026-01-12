@@ -33,7 +33,7 @@ def get_config():
 
 # 基础配置
 APP_ID = "ai-daily-app"
-WEB_URL = "https://your-actual-domain.com" # 👈 请务必确认此地址正确
+WEB_URL = "https://ai-daily-web.vercel.app/" # 👈 请务必确认此地址正确
 AI_INFLUENCERS = [
     "OpenAI", "sama", "AnthropicAI", "DeepMind", "demishassabis", "MetaAI", "ylecun", "MistralAI", "huggingface", "clem_delangue",
     "karpathy", "AravSrinivas", "mustafasuleyman", "gdb", "therundownai", "rowancheung", "pete_huang", "tldr", "bentossell",
