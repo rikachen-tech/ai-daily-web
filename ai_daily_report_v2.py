@@ -17,8 +17,9 @@ from datetime import datetime, timedelta, timezone
 def check_env_vars():
     required_vars = ["RAPIDAPI_KEY", "GEMINI_API_KEY", "SENDER_EMAIL", "SENDER_PASSWORD", "FIREBASE_CONFIG_JSON"]
     missing = [v for v in required_vars if not os.environ.get(v)]
-    if missing:
-        print(f"❌ 启动失败：缺少 Secrets 配置: {', '.join(missing)}")
+   if missing:
+        print(f"❌ 启动失败：GitHub Secrets 中缺少以下配置: {', '.join(missing)}")
+        print("💡 请前往 GitHub 仓库 -> Settings -> Secrets and variables -> Actions 添加上述变量。")
         exit(1)
         
 check_env_vars()
@@ -56,6 +57,10 @@ if not firebase_admin._apps:
         cred_dict = json.loads(FIREBASE_JSON_STR)
         cred = credentials.Certificate(cred_dict)
         firebase_admin.initialize_app(cred)
+        print("✅ Firebase 初始化成功")
+    except json.JSONDecodeError:
+        print("❌ FIREBASE_CONFIG_JSON 格式错误：请确保您从 serviceAccountKey.json 中复制的是完整的大括号内容。")
+        exit(1)
     except Exception as e:
         print(f"❌ Firebase 初始化失败: {e}")
         exit(1)
@@ -80,12 +85,7 @@ def send_email(to_email, subject, html_content):
         return False
 
 def sync_tweets_to_pool():
-    """
-    增量抓取逻辑：
-    1. 检查过去 7 天的大佬动态。
-    2. 如果推文 ID 已在资源池中，跳过。
-    3. 新推文存入 tweet_pool，标记 used_in_report: false。
-    """
+    """增量抓取过去 7 天的动态并存入资源池"""
     bj_now = datetime.now(timezone(timedelta(hours=8)))
     lookback_days = 7
     start_date = (bj_now - timedelta(days=lookback_days)).replace(hour=0, minute=0, second=0)
@@ -103,13 +103,14 @@ def sync_tweets_to_pool():
                                params={"screenname": user}, timeout=20)
             if res.status_code == 200:
                 timeline = res.json().get('timeline', [])
-                for tweet in timeline[:10]: # 每次同步检查前10条
+                for tweet in timeline[:10]:
                     t_id = str(tweet.get('tweet_id'))
-                    c_at = datetime.strptime(tweet['created_at'], "%a %b %d %H:%M:%S +0000 %Y").replace(tzinfo=timezone.utc)
+                    c_at_str = tweet.get('created_at')
+                    if not c_at_str: continue
                     
-                    # 仅处理窗口期内的推文
+                    c_at = datetime.strptime(c_at_str, "%a %b %d %H:%M:%S +0000 %Y").replace(tzinfo=timezone.utc)
+                    
                     if c_at >= start_date:
-                        # 检查是否已存在于资源池
                         doc_ref = pool_ref.document(t_id)
                         if not doc_ref.get().exists:
                             content = tweet.get('text') or tweet.get('full_text', "")
@@ -127,18 +128,19 @@ def sync_tweets_to_pool():
         except: continue
     print(f"\n✅ 同步完成！资源池新增 {new_count} 条动态。")
     
-ef get_unused_tweets_from_pool():
-    """从资源池中提取未使用的推文。修复了需要复合索引的报错问题。"""
+def get_unused_tweets_from_pool():
+    """提取未使用的推文，在内存中安全排序"""
     pool_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("tweet_pool")
     
-    # 💡 修复：不再在数据库端使用 orderBy，避免索引缺失导致的报错
-    # 直接查询所有未使用的推文，然后在 Python 内存中进行排序
+    # 获取所有未使用的推文
     docs = list(pool_ref.where("used_in_report", "==", False).stream())
     
-    # 在内存中按创建时间降序排列
-    sorted_docs = sorted(docs, key=lambda x: x.to_dict().get('created_at', 0), reverse=True)
-    
-    # 取前 50 条作为日报素材
+    def sort_key(doc):
+        # 💡 安全排序：如果缺失日期，设为一个很久以前的日期，避免与 Timestamp 比较失败
+        val = doc.to_dict().get('created_at')
+        return val if val else datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+    sorted_docs = sorted(docs, key=sort_key, reverse=True)
     target_docs = sorted_docs[:50]
     
     all_text = ""
@@ -150,9 +152,8 @@ ef get_unused_tweets_from_pool():
         
     return all_text, used_ids
 
-
 def mark_tweets_as_used(tweet_ids):
-    """日报生成成功后，批量标记推文为已使用"""
+    """标记已使用的推文"""
     pool_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("tweet_pool")
     batch = db.batch()
     for t_id in tweet_ids:
@@ -193,15 +194,18 @@ def fetch_gemini_summary(new_content, date_label):
     注意：直接输出 HTML 内容，不要包裹任何 Markdown 标签。必须使用提供的原文链接进行溯源。
     """
     
-     payload = {
+   payload = {
         "contents": [{"parts": [{"text": f"待分析数据：\n{new_content}"}]}],
         "systemInstruction": {"parts": [{"text": system_prompt}]}
     }
     try:
         print("🤖 正在请求 Gemini 2.5 分析资源池动态...")
         res = requests.post(url, json=payload, timeout=60)
-        report = res.json()['candidates'][0]['content']['parts'][0]['text']
-        return report.replace('```html', '').replace('```', '').strip()
+        res_data = res.json()
+        if 'candidates' in res_data:
+            report = res_data['candidates'][0]['content']['parts'][0]['text']
+            return report.replace('```html', '').replace('```', '').strip()
+        return None
     except Exception as e:
         print(f"❌ Gemini 分析失败: {e}")
         return None
@@ -209,14 +213,16 @@ def fetch_gemini_summary(new_content, date_label):
 # --- 4. 业务逻辑 ---
 
 def handle_otps():
-    """修复：使用更兼容的查询语法"""
     print("🔍 扫描验证码请求...")
-    req_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("verification_requests")
-    docs = req_ref.where("status", "==", "pending").stream()
-    for doc in docs:
-        data = doc.to_dict()
-        if send_email(data['email'], "【验证码】AI 日报订阅", f"您的验证码是：{data['code']}"):
-            doc.reference.update({"status": "sent", "sentAt": firestore.SERVER_TIMESTAMP})
+    try:
+        req_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("verification_requests")
+        docs = req_ref.where("status", "==", "pending").stream()
+        for doc in docs:
+            data = doc.to_dict()
+            if send_email(data['email'], "【验证码】AI 日报订阅", f"您的验证码是：{data['code']}"):
+                doc.reference.update({"status": "sent", "sentAt": firestore.SERVER_TIMESTAMP})
+    except Exception as e:
+        print(f"⚠️ 处理验证码时发生非致命错误: {e}")
 
 def get_report_logic():
     bj_now = datetime.now(timezone(timedelta(hours=8)))
@@ -259,41 +265,47 @@ def get_report_logic():
     return None, today_str
 
 def broadcast_logic(report, date):
-    """修复：优化全员分发逻辑"""
     print(f"📢 正在检查分发任务 ({date})...")
-    subs_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("subscribers")
-    docs = subs_ref.where("active", "==", True).stream()
-    
-    sent_count = 0
-    for doc in docs:
-        data = doc.to_dict()
-        email = data['email']
-        # 补发逻辑：如果今天没收到过，或者处于修复模式
-        should_send = (data.get("last_received_date") != date) or REPAIR_MODE
+    try:
+        subs_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("subscribers")
+        docs = subs_ref.where("active", "==", True).stream()
         
-        if should_send:
-            subject = f"✨ AI 战略观察日报 [{date}]"
-            footer = f'<hr><p style="font-size:12px;color:#999;">退订请点击 <a href="{WEB_URL}?action=unsubscribe&email={email}">此处</a></p>'
-            if send_email(email, subject, report + footer):
-                if not REPAIR_MODE:
-                    doc.reference.update({"last_received_date": date})
-                sent_count += 1
-    print(f"🎉 分发完成，本次推送/补发：{sent_count} 人。")
+        sent_count = 0
+        for doc in docs:
+            data = doc.to_dict()
+            email = data['email']
+            should_send = (data.get("last_received_date") != date) or REPAIR_MODE
+            
+            if should_send:
+                subject = f"✨ AI 战略观察日报 [{date}]"
+                footer = f'<hr><p style="font-size:12px;color:#999;">退订请点击 <a href="{WEB_URL}?action=unsubscribe&email={email}">此处</a></p>'
+                if send_email(email, subject, report + footer):
+                    if not REPAIR_MODE:
+                        doc.reference.update({"last_received_date": date})
+                    sent_count += 1
+        print(f"🎉 分发完成，本次推送/补发：{sent_count} 人。")
+    except Exception as e:
+        print(f"⚠️ 分发过程中发生错误: {e}")
 
 if __name__ == "__main__":
-    print(f"=== 引擎启动 (修复模式: {REPAIR_MODE}) ===")
-    
-    # 1. 处理验证码
-    handle_otps()
-    
-    # 2. 闲时增量同步
-    sync_tweets_to_pool()
-    
-    # 3. 生成或获取内容
-    report_content, report_date = get_report_logic()
-    
-    # 4. 执行分发
-    if report_content:
-        broadcast_logic(report_content, report_date)
-    
-    print("=== ✅ 任务全部处理完毕 ===")
+    try:
+        print(f"=== 引擎启动 (修复模式: {REPAIR_MODE}) | 北京时间: {datetime.now(timezone(timedelta(hours=8)))} ===")
+        
+        # 1. 处理验证码
+        handle_otps()
+        
+        # 2. 闲时增量同步
+        sync_tweets_to_pool()
+        
+        # 3. 生成或获取内容
+        report_content, report_date = get_report_logic()
+        
+        # 4. 执行分发
+        if report_content:
+            broadcast_logic(report_content, report_date)
+        
+        print("=== ✅ 任务全部处理完毕 ===")
+    except Exception as e:
+        print("\n❌ 脚本运行发生崩溃：")
+        traceback.print_exc()
+        exit(1)
