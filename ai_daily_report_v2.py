@@ -109,7 +109,7 @@ def sync_tweets_to_pool():
                     
                     # 仅处理窗口期内的推文
                     if c_at >= start_date:
-                        # 检查是否已存在于资源池 (使用 ID 作为文档名，极速查重)
+                        # 检查是否已存在于资源池
                         doc_ref = pool_ref.document(t_id)
                         if not doc_ref.get().exists:
                             content = tweet.get('text') or tweet.get('full_text', "")
@@ -123,26 +123,33 @@ def sync_tweets_to_pool():
                                 "added_at": firestore.SERVER_TIMESTAMP
                             })
                             new_count += 1
-            time.sleep(1.2) # 礼貌抓取，避免 API 封禁
+            time.sleep(1.2)
         except: continue
     print(f"\n✅ 同步完成！资源池新增 {new_count} 条动态。")
-
-def get_unused_tweets_from_pool():
-    """从资源池中提取所有未被日报使用过的推文数据"""
-    pool_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("tweet_pool")
-    # 按照时间排序，优先获取最近 7 天的
-    query = pool_ref.where(filter=FieldFilter("used_in_report", "==", False)).order_by("created_at", direction=firestore.Query.DESCENDING).limit(50)
     
-    docs = query.stream()
+ef get_unused_tweets_from_pool():
+    """从资源池中提取未使用的推文。修复了需要复合索引的报错问题。"""
+    pool_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("tweet_pool")
+    
+    # 💡 修复：不再在数据库端使用 orderBy，避免索引缺失导致的报错
+    # 直接查询所有未使用的推文，然后在 Python 内存中进行排序
+    docs = list(pool_ref.where("used_in_report", "==", False).stream())
+    
+    # 在内存中按创建时间降序排列
+    sorted_docs = sorted(docs, key=lambda x: x.to_dict().get('created_at', 0), reverse=True)
+    
+    # 取前 50 条作为日报素材
+    target_docs = sorted_docs[:50]
+    
     all_text = ""
     used_ids = []
-    
-    for doc in docs:
+    for doc in target_docs:
         data = doc.to_dict()
         all_text += f"USER: @{data['user']} | LINK: {data['url']} | CONTENT: {data['content']}\n"
         used_ids.append(doc.id)
         
     return all_text, used_ids
+
 
 def mark_tweets_as_used(tweet_ids):
     """日报生成成功后，批量标记推文为已使用"""
@@ -202,12 +209,13 @@ def fetch_gemini_summary(new_content, date_label):
 # --- 4. 业务逻辑 ---
 
 def handle_otps():
+    """修复：使用更兼容的查询语法"""
     print("🔍 扫描验证码请求...")
     req_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("verification_requests")
-    docs = req_ref.where(filter=FieldFilter("status", "==", "pending")).stream()
+    docs = req_ref.where("status", "==", "pending").stream()
     for doc in docs:
         data = doc.to_dict()
-        if send_email(data['email'], "【验证码】AI 日报订阅", f"验证码：{data['code']}"):
+        if send_email(data['email'], "【验证码】AI 日报订阅", f"您的验证码是：{data['code']}"):
             doc.reference.update({"status": "sent", "sentAt": firestore.SERVER_TIMESTAMP})
 
 def get_report_logic():
@@ -216,8 +224,7 @@ def get_report_logic():
     # --- 修复模式逻辑 ---
     if REPAIR_MODE:
         print(f"🛠 [修复模式] 正在为 {REPAIR_DATE} 生成报告...")
-        # 修复模式下不强制要求从 unused pool 提取，因为内容可能已被标记
-        raw_data, _ = get_unused_tweets_from_pool() # 尽可能拿没用过的，或者也可以根据日期提取
+        raw_data, _ = get_unused_tweets_from_pool()
         report = fetch_gemini_summary(raw_data, REPAIR_DATE)
         if report:
             db.collection("daily_history").document(REPAIR_DATE).set({
@@ -236,7 +243,6 @@ def get_report_logic():
     if snap.exists:
         return snap.to_dict().get("content"), today_str
     
-    # 发现今天还没生成日报：从资源池提取素材
     print(f"🛠 正在为今日 ({today_str}) 生成新鲜简报...")
     raw_data, tweet_ids = get_unused_tweets_from_pool()
     
@@ -247,21 +253,22 @@ def get_report_logic():
     report = fetch_gemini_summary(raw_data, today_str)
     if report:
         doc_ref.set({"content": report, "timestamp": firestore.SERVER_TIMESTAMP})
-        # 核心：报告生成成功后，标记这些推文为已使用，防止下次重复
         mark_tweets_as_used(tweet_ids)
-        print(f"✅ 日报已存入数据库，并已标记 {len(tweet_ids)} 条素材为“已消费”。")
+        print(f"✅ 日报已存入数据库，并已标记 {len(tweet_ids)} 条素材。")
         return report, today_str
     return None, today_str
 
 def broadcast_logic(report, date):
+    """修复：优化全员分发逻辑"""
     print(f"📢 正在检查分发任务 ({date})...")
     subs_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("subscribers")
-    docs = subs_ref.where(filter=FieldFilter("active", "==", True)).stream()
+    docs = subs_ref.where("active", "==", True).stream()
     
     sent_count = 0
     for doc in docs:
         data = doc.to_dict()
         email = data['email']
+        # 补发逻辑：如果今天没收到过，或者处于修复模式
         should_send = (data.get("last_received_date") != date) or REPAIR_MODE
         
         if should_send:
@@ -279,13 +286,13 @@ if __name__ == "__main__":
     # 1. 处理验证码
     handle_otps()
     
-    # 2. 闲时增量同步 (每次运行都同步一次，保持资源池新鲜)
+    # 2. 闲时增量同步
     sync_tweets_to_pool()
     
-    # 3. 生成或获取今日报告内容
+    # 3. 生成或获取内容
     report_content, report_date = get_report_logic()
     
-    # 4. 精准推送给尚未收到的用户
+    # 4. 执行分发
     if report_content:
         broadcast_logic(report_content, report_date)
     
