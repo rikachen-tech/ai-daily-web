@@ -79,54 +79,87 @@ def send_email(to_email, subject, html_content):
         print(f"📧 邮件发送至 {to_email} 失败: {e}")
         return False
 
-def get_tweets(target_date_obj):
-    """抓取推文并实时打印采样数据，方便调试"""
-    all_text = ""
-    start = target_date_obj.replace(hour=0, minute=0, second=0)
-    end = target_date_obj.replace(hour=23, minute=59, second=59)
-    print(f"📡 正在检查时间段: {start.strftime('%Y-%m-%d %H:%M:%S')} 至 {end.strftime('%Y-%m-%d %H:%M:%S')}")
+def sync_tweets_to_pool():
+    """
+    增量抓取逻辑：
+    1. 检查过去 7 天的大佬动态。
+    2. 如果推文 ID 已在资源池中，跳过。
+    3. 新推文存入 tweet_pool，标记 used_in_report: false。
+    """
+    bj_now = datetime.now(timezone(timedelta(hours=8)))
+    lookback_days = 7
+    start_date = (bj_now - timedelta(days=lookback_days)).replace(hour=0, minute=0, second=0)
     
-    total_found = 0
+    print(f"📡 启动增量抓取 (回溯窗口: {lookback_days} 天)...")
+    
+    new_count = 0
+    pool_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("tweet_pool")
+
     for i, user in enumerate(AI_INFLUENCERS):
         try:
-            print(f"   [{i+1}/{len(AI_INFLUENCERS)}] 正在请求 @{user}...")
+            print(f"   [{i+1}/{len(AI_INFLUENCERS)}] 正在同步 @{user}...", end="\r")
             res = requests.get(f"https://{RAPIDAPI_HOST}/timeline.php", 
                                headers={"X-RapidAPI-Key": RAPIDAPI_KEY, "X-RapidAPI-Host": RAPIDAPI_HOST}, 
                                params={"screenname": user}, timeout=20)
-            
             if res.status_code == 200:
-                data = res.json()
-                timeline = data.get('timeline', [])
-                user_found_count = 0
-                for tweet in timeline[:5]:
+                timeline = res.json().get('timeline', [])
+                for tweet in timeline[:10]: # 每次同步检查前10条
+                    t_id = str(tweet.get('tweet_id'))
                     c_at = datetime.strptime(tweet['created_at'], "%a %b %d %H:%M:%S +0000 %Y").replace(tzinfo=timezone.utc)
-                    if start <= c_at <= end:
-                        content = tweet.get('text') or tweet.get('full_text', "")
-                        t_id = tweet.get('tweet_id')
-                        t_url = f"https://x.com/{user}/status/{t_id}"
-                        all_text += f"USER: @{user} | LINK: {t_url} | CONTENT: {content}\n"
-                        total_found += 1
-                        user_found_count += 1
-                if user_found_count > 0:
-                    print(f"      ✅ 发现 {user_found_count} 条动态: {content[:30]}...")
-            elif res.status_code == 429:
-                print("   ⚠️ 警告: RapidAPI 额度已用尽 (Rate Limit)。")
-                break
-            else:
-                print(f"   ❓ API 返回状态码: {res.status_code}")
-            time.sleep(1.2)
-        except Exception as e:
-            print(f"   ❌ 抓取 @{user} 异常: {e}")
-            continue
-            
-    return all_text if total_found > 0 else None
+                    
+                    # 仅处理窗口期内的推文
+                    if c_at >= start_date:
+                        # 检查是否已存在于资源池 (使用 ID 作为文档名，极速查重)
+                        doc_ref = pool_ref.document(t_id)
+                        if not doc_ref.get().exists:
+                            content = tweet.get('text') or tweet.get('full_text', "")
+                            t_url = f"https://x.com/{user}/status/{t_id}"
+                            doc_ref.set({
+                                "user": user,
+                                "content": content,
+                                "url": t_url,
+                                "created_at": c_at,
+                                "used_in_report": False,
+                                "added_at": firestore.SERVER_TIMESTAMP
+                            })
+                            new_count += 1
+            time.sleep(1.2) # 礼貌抓取，避免 API 封禁
+        except: continue
+    print(f"\n✅ 同步完成！资源池新增 {new_count} 条动态。")
+
+def get_unused_tweets_from_pool():
+    """从资源池中提取所有未被日报使用过的推文数据"""
+    pool_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("tweet_pool")
+    # 按照时间排序，优先获取最近 7 天的
+    query = pool_ref.where(filter=FieldFilter("used_in_report", "==", False)).order_by("created_at", direction=firestore.Query.DESCENDING).limit(50)
+    
+    docs = query.stream()
+    all_text = ""
+    used_ids = []
+    
+    for doc in docs:
+        data = doc.to_dict()
+        all_text += f"USER: @{data['user']} | LINK: {data['url']} | CONTENT: {data['content']}\n"
+        used_ids.append(doc.id)
+        
+    return all_text, used_ids
+
+def mark_tweets_as_used(tweet_ids):
+    """日报生成成功后，批量标记推文为已使用"""
+    pool_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("tweet_pool")
+    batch = db.batch()
+    for t_id in tweet_ids:
+        doc_ref = pool_ref.document(t_id)
+        batch.update(doc_ref, {"used_in_report": True, "used_at": firestore.SERVER_TIMESTAMP})
+    batch.commit()
 
 def fetch_gemini_summary(new_content, date_label):
+    if not new_content: return None
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={GEMINI_API_KEY}"
     
     system_prompt = """
    # Role
-    你是一位顶级的 AI 行业分析师和资深 AI 产品经理导师。你的任务是追踪 Twitter (X) 上全球最前沿的 AI 开发者、产品经理及研究员的动态，并为一位“正从传统策略产品经理转型 AI 产品经理”的用户生成每日深度日报。
+    你是一位顶级的 AI 行业分析师和资深 AI 产品经理导师。你的任务是根据提供的推文资源池（包含过去 7 天未曾分析的全球最前沿的 AI 开发者、产品经理及研究员的动态）并为一位“正从传统策略产品经理转型 AI 产品经理”的用户生成每日深度日报。
    # rules
     1. 只能使用 [数据源] 里的真实信息。
     2. 如果数据源里的推文少于 3 条，请如实告知用户今日动态较少，严禁编造。
@@ -153,13 +186,12 @@ def fetch_gemini_summary(new_content, date_label):
     注意：直接输出 HTML 内容，不要包裹任何 Markdown 标签。必须使用提供的原文链接进行溯源。
     """
     
-    payload = {
-        "contents": [{"parts": [{"text": f"日期：{date_label}\n[数据源]:\n{new_content}"}]}],
+     payload = {
+        "contents": [{"parts": [{"text": f"待分析数据：\n{new_content}"}]}],
         "systemInstruction": {"parts": [{"text": system_prompt}]}
     }
-    
     try:
-        print("🤖 正在请求 Gemini 2.5 进行深度分析...")
+        print("🤖 正在请求 Gemini 2.5 分析资源池动态...")
         res = requests.post(url, json=payload, timeout=60)
         report = res.json()['candidates'][0]['content']['parts'][0]['text']
         return report.replace('```html', '').replace('```', '').strip()
@@ -169,9 +201,8 @@ def fetch_gemini_summary(new_content, date_label):
 
 # --- 4. 业务逻辑 ---
 
-# --- 4. 业务逻辑 ---
-
 def handle_otps():
+    print("🔍 扫描验证码请求...")
     req_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("verification_requests")
     docs = req_ref.where(filter=FieldFilter("status", "==", "pending")).stream()
     for doc in docs:
@@ -182,15 +213,13 @@ def handle_otps():
 def get_report_logic():
     bj_now = datetime.now(timezone(timedelta(hours=8)))
     
-    # 修复模式：直接指定日期并重新抓取
+    # --- 修复模式逻辑 ---
     if REPAIR_MODE:
-        print(f"🛠 [修复模式启动] 正在为 {REPAIR_DATE} 重新生成报告...")
-        target_date_obj = datetime.strptime(REPAIR_DATE, "%Y-%m-%d").replace(tzinfo=timezone(timedelta(hours=8)))
-        raw_data = get_tweets(target_date_obj - timedelta(days=1)) # 抓取该日期前一天的推文
-        
+        print(f"🛠 [修复模式] 正在为 {REPAIR_DATE} 生成报告...")
+        # 修复模式下不强制要求从 unused pool 提取，因为内容可能已被标记
+        raw_data, _ = get_unused_tweets_from_pool() # 尽可能拿没用过的，或者也可以根据日期提取
         report = fetch_gemini_summary(raw_data, REPAIR_DATE)
         if report:
-            # 覆盖旧缓存
             db.collection("daily_history").document(REPAIR_DATE).set({
                 "content": report, 
                 "timestamp": firestore.SERVER_TIMESTAMP,
@@ -199,50 +228,65 @@ def get_report_logic():
             return report, REPAIR_DATE
         return None, REPAIR_DATE
 
-    # 正常模式
+    # --- 正常模式逻辑 ---
     today_str = bj_now.strftime('%Y-%m-%d')
     doc_ref = db.collection("daily_history").document(today_str)
     snap = doc_ref.get()
+    
     if snap.exists:
         return snap.to_dict().get("content"), today_str
     
-    raw_data = get_tweets(bj_now - timedelta(days=1))
-    if not raw_data: return None, today_str
+    # 发现今天还没生成日报：从资源池提取素材
+    print(f"🛠 正在为今日 ({today_str}) 生成新鲜简报...")
+    raw_data, tweet_ids = get_unused_tweets_from_pool()
+    
+    if not raw_data: 
+        print("📭 资源池中暂无未使用的推文，跳过报告生成。")
+        return None, today_str
     
     report = fetch_gemini_summary(raw_data, today_str)
     if report:
         doc_ref.set({"content": report, "timestamp": firestore.SERVER_TIMESTAMP})
+        # 核心：报告生成成功后，标记这些推文为已使用，防止下次重复
+        mark_tweets_as_used(tweet_ids)
+        print(f"✅ 日报已存入数据库，并已标记 {len(tweet_ids)} 条素材为“已消费”。")
         return report, today_str
     return None, today_str
 
 def broadcast_logic(report, date):
-    print(f"📢 正在分发日报 ({date})...")
+    print(f"📢 正在检查分发任务 ({date})...")
     subs_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("subscribers")
     docs = subs_ref.where(filter=FieldFilter("active", "==", True)).stream()
     
+    sent_count = 0
     for doc in docs:
         data = doc.to_dict()
         email = data['email']
-        
-        # 修复模式下：无视 last_received_date 检查，全员发送
         should_send = (data.get("last_received_date") != date) or REPAIR_MODE
         
         if should_send:
-            print(f"   -> 正在发送修正版至: {email}")
-            subject = f"✨ [修正版] AI 战略观察日报 [{date}]" if REPAIR_MODE else f"✨ AI 战略观察日报 [{date}]"
-            footer = f'<hr><p style="font-size:12px;color:#999;">收到了错误信息？这是我们的修正版本。退订请点击 <a href="{WEB_URL}?action=unsubscribe&email={email}">此处</a></p>'
-            
+            subject = f"✨ AI 战略观察日报 [{date}]"
+            footer = f'<hr><p style="font-size:12px;color:#999;">退订请点击 <a href="{WEB_URL}?action=unsubscribe&email={email}">此处</a></p>'
             if send_email(email, subject, report + footer):
-                if not REPAIR_MODE: # 正常模式才更新日期，修复模式不更新以防干扰后续流程
+                if not REPAIR_MODE:
                     doc.reference.update({"last_received_date": date})
+                sent_count += 1
+    print(f"🎉 分发完成，本次推送/补发：{sent_count} 人。")
 
 if __name__ == "__main__":
     print(f"=== 引擎启动 (修复模式: {REPAIR_MODE}) ===")
+    
+    # 1. 处理验证码
     handle_otps()
+    
+    # 2. 闲时增量同步 (每次运行都同步一次，保持资源池新鲜)
+    sync_tweets_to_pool()
+    
+    # 3. 生成或获取今日报告内容
     report_content, report_date = get_report_logic()
     
+    # 4. 精准推送给尚未收到的用户
     if report_content:
         broadcast_logic(report_content, report_date)
-        print("🎉 修正补发任务已完成。")
-    else:
-        print("🛑 任务失败：未能获取有效数据。")
+    
+    print("=== ✅ 任务全部处理完毕 ===")
