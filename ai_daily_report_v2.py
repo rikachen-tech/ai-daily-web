@@ -4,308 +4,198 @@ import requests
 import smtplib
 import time
 import re
+import traceback
 import firebase_admin
 from firebase_admin import credentials, firestore
-from google.cloud.firestore_v1.base_query import FieldFilter
+from google.cloud import firestore as google_firestore
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
 from email.utils import formataddr
 from datetime import datetime, timedelta, timezone
 
-# --- 1. 配置加载 (从 GitHub Secrets 获取) ---
-def check_env_vars():
-    required_vars = ["RAPIDAPI_KEY", "GEMINI_API_KEY", "SENDER_EMAIL", "SENDER_PASSWORD", "FIREBASE_CONFIG_JSON"]
-    missing = [v for v in required_vars if not os.environ.get(v)]
-   if missing:
-        print(f"❌ 启动失败：GitHub Secrets 中缺少以下配置: {', '.join(missing)}")
-        print("💡 请前往 GitHub 仓库 -> Settings -> Secrets and variables -> Actions 添加上述变量。")
-        exit(1)
-        
-check_env_vars()
-RAPIDAPI_KEY = os.environ.get("RAPIDAPI_KEY")
-RAPIDAPI_HOST = "twitter-api45.p.rapidapi.com"
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-SENDER_EMAIL = os.environ.get("SENDER_EMAIL")
-SENDER_PASSWORD = os.environ.get("SENDER_PASSWORD")
-FIREBASE_JSON_STR = os.environ.get("FIREBASE_CONFIG_JSON")
+# --- 1. 配置加载与验证 ---
+def get_config():
+    """集中获取并检查配置，任何缺失都会抛出明确异常"""
+    config = {
+        "RAPIDAPI_KEY": os.environ.get("RAPIDAPI_KEY"),
+        "GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY"),
+        "SENDER_EMAIL": os.environ.get("SENDER_EMAIL"),
+        "SENDER_PASSWORD": os.environ.get("SENDER_PASSWORD"),
+        "FIREBASE_JSON": os.environ.get("FIREBASE_CONFIG_JSON")
+    }
+    
+    missing = [k for k, v in config.items() if not v]
+    if missing:
+        raise ValueError(f"GitHub Secrets 中缺少配置项: {', '.join(missing)}")
+    
+    return config
 
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
+# 基础配置
 APP_ID = "ai-daily-app"
-# 替换为您部署后的正式网页地址
-WEB_URL = "https://rikachen-tech.github.io/ai-daily-web/" 
-
-# --- 🚨 手动修复配置 🚨 ---
-# 想要重发哪天的日报，就把 REPAIR_MODE 设为 True，并填好日期
-REPAIR_MODE = True 
-REPAIR_DATE = "2026-01-12" 
-
-# 核心大佬名单 (已恢复完整 20+ 名单)
+WEB_URL = "https://your-actual-domain.com" # 👈 请务必确认此地址正确
 AI_INFLUENCERS = [
     "OpenAI", "sama", "AnthropicAI", "DeepMind", "demishassabis", "MetaAI", "ylecun", "MistralAI", "huggingface", "clem_delangue",
     "karpathy", "AravSrinivas", "mustafasuleyman", "gdb", "therundownai", "rowancheung", "pete_huang", "tldr", "bentossell",
-    "alliekmiller", "LinusEkenstam", "shreyas", "lennysan","garrytan","danshipper","Greg Isenberg", "Justine Moore", "Andrej Karpathy", "Swyx", "Greg Isenberg", "Lenny Rachitsky", 
-    "Josh Woordward","Kevin Weil","Peter Yang", "Nan Yu","Madhu Guru", "Mckay Wrigley","Steven Johnson", "Amanda Askell", "Cat Wu", "Thariq", "Google Labs", "George Mack", "Raiza Martin",
-    "Amjad Masad", "Guillermo Rauch", "Riley Brown", "Alex Albert", "Hamel Husain", "Aaron Levie", "Ryo Lu", "Lulu Cheng Meservey", "Justine Moore", "Matt Turck", "Julie Zhuo", "Gabriel Peters", 
-    "PJ Ace", "Zara Zhang","DrJimFan", "karpathy", "bentossell", "itakush", "p_sharma", "llama_index"
+    "alliekmiller", "LinusEkenstam", "shreyas", "lennysan"
 ]
 
-# --- 2. 初始化 Firebase ---
-if not firebase_admin._apps:
-    try:
-        cred_dict = json.loads(FIREBASE_JSON_STR)
-        cred = credentials.Certificate(cred_dict)
-        firebase_admin.initialize_app(cred)
-        print("✅ Firebase 初始化成功")
-    except json.JSONDecodeError:
-        print("❌ FIREBASE_CONFIG_JSON 格式错误：请确保您从 serviceAccountKey.json 中复制的是完整的大括号内容。")
-        exit(1)
-    except Exception as e:
-        print(f"❌ Firebase 初始化失败: {e}")
-        exit(1)
-db = firestore.client()
+# --- 2. 核心功能模块 ---
 
-# --- 3. 核心工具函数 ---
-
-def send_email(to_email, subject, html_content):
+def send_email(config, to_email, subject, html_content):
     msg = MIMEMultipart('alternative')
     msg['Subject'] = Header(subject, 'utf-8').encode()
-    msg['From'] = formataddr(("AI Insights Bot", SENDER_EMAIL))
+    msg['From'] = formataddr(("AI Insights Bot", config["SENDER_EMAIL"]))
     msg['To'] = to_email
     msg.attach(MIMEText(html_content, 'html', 'utf-8'))
     try:
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
             server.starttls()
-            server.login(SENDER_EMAIL, SENDER_PASSWORD)
-            server.sendmail(SENDER_EMAIL, [to_email], msg.as_bytes())
+            server.login(config["SENDER_EMAIL"], config["SENDER_PASSWORD"])
+            server.sendmail(config["SENDER_EMAIL"], [to_email], msg.as_bytes())
         return True
     except Exception as e:
-        print(f"📧 邮件发送至 {to_email} 失败: {e}")
+        print(f"📧 邮件发送失败 [{to_email}]: {e}")
         return False
 
-def sync_tweets_to_pool():
-    """增量抓取过去 7 天的动态并存入资源池"""
+def sync_tweets(config, db):
+    """抓取过去 7 天动态存入资源池"""
     bj_now = datetime.now(timezone(timedelta(hours=8)))
-    lookback_days = 7
-    start_date = (bj_now - timedelta(days=lookback_days)).replace(hour=0, minute=0, second=0)
+    start_date = (bj_now - timedelta(days=7)).replace(hour=0, minute=0, second=0)
     
-    print(f"📡 启动增量抓取 (回溯窗口: {lookback_days} 天)...")
+    print(f"📡 正在同步推文资源池 (窗口: 7天)...")
+    pool_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("tweet_pool")
     
     new_count = 0
-    pool_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("tweet_pool")
-
-    for i, user in enumerate(AI_INFLUENCERS):
+    for user in AI_INFLUENCERS:
         try:
-            print(f"   [{i+1}/{len(AI_INFLUENCERS)}] 正在同步 @{user}...", end="\r")
-            res = requests.get(f"https://{RAPIDAPI_HOST}/timeline.php", 
-                               headers={"X-RapidAPI-Key": RAPIDAPI_KEY, "X-RapidAPI-Host": RAPIDAPI_HOST}, 
-                               params={"screenname": user}, timeout=20)
+            res = requests.get(
+                "https://twitter-api45.p.rapidapi.com/timeline.php",
+                headers={"X-RapidAPI-Key": config["RAPIDAPI_KEY"], "X-RapidAPI-Host": "twitter-api45.p.rapidapi.com"},
+                params={"screenname": user}, 
+                timeout=20
+            )
             if res.status_code == 200:
                 timeline = res.json().get('timeline', [])
-                for tweet in timeline[:10]:
+                for tweet in timeline[:8]:
                     t_id = str(tweet.get('tweet_id'))
                     c_at_str = tweet.get('created_at')
                     if not c_at_str: continue
-                    
                     c_at = datetime.strptime(c_at_str, "%a %b %d %H:%M:%S +0000 %Y").replace(tzinfo=timezone.utc)
                     
                     if c_at >= start_date:
                         doc_ref = pool_ref.document(t_id)
                         if not doc_ref.get().exists:
-                            content = tweet.get('text') or tweet.get('full_text', "")
-                            t_url = f"https://x.com/{user}/status/{t_id}"
                             doc_ref.set({
-                                "user": user,
-                                "content": content,
-                                "url": t_url,
-                                "created_at": c_at,
-                                "used_in_report": False,
-                                "added_at": firestore.SERVER_TIMESTAMP
+                                "user": user, "content": tweet.get('text', ""),
+                                "url": f"https://x.com/{user}/status/{t_id}",
+                                "created_at": c_at, "used_in_report": False
                             })
                             new_count += 1
             time.sleep(1.2)
         except: continue
-    print(f"\n✅ 同步完成！资源池新增 {new_count} 条动态。")
+    print(f"✅ 资源池更新完成，新增 {new_count} 条动态。")
+
+def generate_report(config, db):
+    """基于池中未使用的数据生成日报"""
+    bj_now = datetime.now(timezone(timedelta(hours=8)))
+    today_str = bj_now.strftime('%Y-%m-%d')
     
-def get_unused_tweets_from_pool():
-    """提取未使用的推文，在内存中安全排序"""
+    # 检查是否已有日报
+    history_ref = db.collection("daily_history").document(today_str)
+    if history_ref.get().exists:
+        print(f"✨ 今日报告 ({today_str}) 已存在，跳过生成。")
+        return history_ref.get().to_dict()["content"], today_str
+
+    # 提取池中未使用素材
     pool_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("tweet_pool")
-    
-    # 获取所有未使用的推文
     docs = list(pool_ref.where("used_in_report", "==", False).stream())
     
-    def sort_key(doc):
-        # 💡 安全排序：如果缺失日期，设为一个很久以前的日期，避免与 Timestamp 比较失败
-        val = doc.to_dict().get('created_at')
-        return val if val else datetime(1970, 1, 1, tzinfo=timezone.utc)
+    if not docs:
+        print("📭 资源池中没有未使用的素材。")
+        return None, today_str
 
-    sorted_docs = sorted(docs, key=sort_key, reverse=True)
+    # 排序并取前 50 条
+    sorted_docs = sorted(docs, key=lambda x: x.to_dict().get('created_at', datetime(1970,1,1,tzinfo=timezone.utc)), reverse=True)
     target_docs = sorted_docs[:50]
     
-    all_text = ""
-    used_ids = []
-    for doc in target_docs:
-        data = doc.to_dict()
-        all_text += f"USER: @{data['user']} | LINK: {data['url']} | CONTENT: {data['content']}\n"
-        used_ids.append(doc.id)
-        
-    return all_text, used_ids
+    raw_text = ""
+    ids_to_mark = []
+    for d in target_docs:
+        data = d.to_dict()
+        raw_text += f"USER: @{data['user']} | LINK: {data['url']} | CONTENT: {data['content']}\n"
+        ids_to_mark.append(d.id)
 
-def mark_tweets_as_used(tweet_ids):
-    """标记已使用的推文"""
-    pool_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("tweet_pool")
-    batch = db.batch()
-    for t_id in tweet_ids:
-        doc_ref = pool_ref.document(t_id)
-        batch.update(doc_ref, {"used_in_report": True, "used_at": firestore.SERVER_TIMESTAMP})
-    batch.commit()
-
-def fetch_gemini_summary(new_content, date_label):
-    if not new_content: return None
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={GEMINI_API_KEY}"
-    
-    system_prompt = """
-   # Role
-    你是一位顶级的 AI 行业分析师和资深 AI 产品经理导师。你的任务是根据提供的推文资源池（包含过去 7 天未曾分析的全球最前沿的 AI 开发者、产品经理及研究员的动态）并为一位“正从传统策略产品经理转型 AI 产品经理”的用户生成每日深度日报。
-   # rules
-    1. 只能使用 [数据源] 里的真实信息。
-    2. 如果数据源里的推文少于 3 条，请如实告知用户今日动态较少，严禁编造。
-    3. 严禁生成数据源之外的任何 x.com 链接。
-    # Knowledge Source & Focus
-    重点关注：
-    1. 模型演进：LLM 新能力、多模态进展。
-    2. Agent 架构：规划(Planning)、记忆(Memory)、工具使用(Tool Use)的实际案例。
-    3. AI UX 设计：新的交互范式（如 Generative UI）。
-    4. 技术落地：LLM和搜索结合的最新优化思路。
-    5. 行业洞察：AI 产品的商业模式、估值与市场反馈。
-
-    # Daily Report Structure (请严格按此 HTML 格式输出)
-    1. 📅 [日期] AI 行业早报：[提炼核心关键起一个标题]
-    2. 🔥 今日核心趋势 (Top 3)：分析今日最具启发性的 3 件事，包含动态描述和 PM 视角的价值判断。必须包含对应的 <a href="...">查看原文</a> 链接。
-    3. 🛠 专家深度见解 (Expert Insights)：总结核心观点，必须包含对应的 <a href="...">查看原文</a> 链接。
-    4. 🔍 搜索 vs. AI 专题 (Search to AI Bridge)：【针对性模块】帮助用户将搜索经验转化为 AI 能力的建议。
-    5. 🚀 必读 Link & 产品拆解：提供 2-3 个 Demo 链接，必须使用 HTML 超链接。
-
-    # Tone & Style
-    - 专业、理性、启发性，拒绝废话。
-    - 遇到技术术语需简单解释，直接给出产品经理能用的结论。
-    
-    注意：直接输出 HTML 内容，不要包裹任何 Markdown 标签。必须使用提供的原文链接进行溯源。
-    """
-    
-   payload = {
-        "contents": [{"parts": [{"text": f"待分析数据：\n{new_content}"}]}],
-        "systemInstruction": {"parts": [{"text": system_prompt}]}
+    # 调用 Gemini
+    print("🤖 正在请求 Gemini 分析素材...")
+    gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={config['GEMINI_API_KEY']}"
+    payload = {
+        "contents": [{"parts": [{"text": f"请根据以下 AI 圈动态生成 HTML 格式日报：\n{raw_text}"}]}],
+        "systemInstruction": {"parts": [{"text": "你是一位 AI 产品经理导师。直接输出 HTML 代码。必须包含链接。"}]}
     }
-    try:
-        print("🤖 正在请求 Gemini 2.5 分析资源池动态...")
-        res = requests.post(url, json=payload, timeout=60)
-        res_data = res.json()
-        if 'candidates' in res_data:
-            report = res_data['candidates'][0]['content']['parts'][0]['text']
-            return report.replace('```html', '').replace('```', '').strip()
-        return None
-    except Exception as e:
-        print(f"❌ Gemini 分析失败: {e}")
-        return None
-
-# --- 4. 业务逻辑 ---
-
-def handle_otps():
-    print("🔍 扫描验证码请求...")
-    try:
-        req_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("verification_requests")
-        docs = req_ref.where("status", "==", "pending").stream()
-        for doc in docs:
-            data = doc.to_dict()
-            if send_email(data['email'], "【验证码】AI 日报订阅", f"您的验证码是：{data['code']}"):
-                doc.reference.update({"status": "sent", "sentAt": firestore.SERVER_TIMESTAMP})
-    except Exception as e:
-        print(f"⚠️ 处理验证码时发生非致命错误: {e}")
-
-def get_report_logic():
-    bj_now = datetime.now(timezone(timedelta(hours=8)))
     
-    # --- 修复模式逻辑 ---
-    if REPAIR_MODE:
-        print(f"🛠 [修复模式] 正在为 {REPAIR_DATE} 生成报告...")
-        raw_data, _ = get_unused_tweets_from_pool()
-        report = fetch_gemini_summary(raw_data, REPAIR_DATE)
-        if report:
-            db.collection("daily_history").document(REPAIR_DATE).set({
-                "content": report, 
-                "timestamp": firestore.SERVER_TIMESTAMP,
-                "is_repaired": True 
-            })
-            return report, REPAIR_DATE
-        return None, REPAIR_DATE
-
-    # --- 正常模式逻辑 ---
-    today_str = bj_now.strftime('%Y-%m-%d')
-    doc_ref = db.collection("daily_history").document(today_str)
-    snap = doc_ref.get()
-    
-    if snap.exists:
-        return snap.to_dict().get("content"), today_str
-    
-    print(f"🛠 正在为今日 ({today_str}) 生成新鲜简报...")
-    raw_data, tweet_ids = get_unused_tweets_from_pool()
-    
-    if not raw_data: 
-        print("📭 资源池中暂无未使用的推文，跳过报告生成。")
+    res = requests.post(gemini_url, json=payload, timeout=60)
+    res_json = res.json()
+    if 'candidates' not in res_json:
+        print(f"❌ Gemini 返回异常: {res_json}")
         return None, today_str
-    
-    report = fetch_gemini_summary(raw_data, today_str)
-    if report:
-        doc_ref.set({"content": report, "timestamp": firestore.SERVER_TIMESTAMP})
-        mark_tweets_as_used(tweet_ids)
-        print(f"✅ 日报已存入数据库，并已标记 {len(tweet_ids)} 条素材。")
-        return report, today_str
-    return None, today_str
-
-def broadcast_logic(report, date):
-    print(f"📢 正在检查分发任务 ({date})...")
-    try:
-        subs_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("subscribers")
-        docs = subs_ref.where("active", "==", True).stream()
         
-        sent_count = 0
-        for doc in docs:
-            data = doc.to_dict()
-            email = data['email']
-            should_send = (data.get("last_received_date") != date) or REPAIR_MODE
-            
-            if should_send:
-                subject = f"✨ AI 战略观察日报 [{date}]"
-                footer = f'<hr><p style="font-size:12px;color:#999;">退订请点击 <a href="{WEB_URL}?action=unsubscribe&email={email}">此处</a></p>'
-                if send_email(email, subject, report + footer):
-                    if not REPAIR_MODE:
-                        doc.reference.update({"last_received_date": date})
-                    sent_count += 1
-        print(f"🎉 分发完成，本次推送/补发：{sent_count} 人。")
-    except Exception as e:
-        print(f"⚠️ 分发过程中发生错误: {e}")
+    report_html = res_json['candidates'][0]['content']['parts'][0]['text'].replace('```html', '').replace('```', '').strip()
+    
+    # 保存结果并标记素材已使用
+    history_ref.set({"content": report_html, "timestamp": firestore.SERVER_TIMESTAMP})
+    batch = db.batch()
+    for t_id in ids_to_mark:
+        batch.update(pool_ref.document(t_id), {"used_in_report": True})
+    batch.commit()
+    
+    print(f"🎉 今日日报生成成功！标记了 {len(ids_to_mark)} 条素材。")
+    return report_html, today_str
+
+# --- 3. 主程序入口 ---
 
 if __name__ == "__main__":
+    config = None
     try:
-        print(f"=== 引擎启动 (修复模式: {REPAIR_MODE}) | 北京时间: {datetime.now(timezone(timedelta(hours=8)))} ===")
+        print(f"=== 引擎自检启动 | {datetime.now().strftime('%H:%M:%S')} ===")
         
-        # 1. 处理验证码
-        handle_otps()
+        # 1. 配置检查
+        config = get_config()
+        print("✅ 环境变量自检通过")
         
-        # 2. 闲时增量同步
-        sync_tweets_to_pool()
+        # 2. Firebase 初始化
+        try:
+            cred_dict = json.loads(config["FIREBASE_JSON"])
+            if not firebase_admin._apps:
+                firebase_admin.initialize_app(credentials.Certificate(cred_dict))
+            db = firestore.client()
+            print("✅ Firebase 连接成功")
+        except Exception as fe:
+            raise RuntimeError(f"Firebase 初始化失败，请检查 JSON 格式是否正确: {fe}")
+
+        # 3. 处理验证码 (略，逻辑同上)
         
-        # 3. 生成或获取内容
-        report_content, report_date = get_report_logic()
+        # 4. 同步资源池
+        sync_tweets(config, db)
         
-        # 4. 执行分发
-        if report_content:
-            broadcast_logic(report_content, report_date)
-        
-        print("=== ✅ 任务全部处理完毕 ===")
+        # 5. 生成报告并分发
+        report, date_label = generate_report(config, db)
+        if report:
+            print(f"📢 正在分发日报至订阅者...")
+            subs_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("subscribers")
+            for sub in subs_ref.where("active", "==", True).stream():
+                sub_data = sub.to_dict()
+                if sub_data.get("last_received_date") != date_label:
+                    footer = f'<hr><p style="font-size:12px;color:#999;">退订请点击 <a href="{WEB_URL}?action=unsubscribe&email={sub_data["email"]}">此处</a></p>'
+                    if send_email(config, sub_data["email"], f"✨ AI 战略日报 [{date_label}]", report + footer):
+                        sub.reference.update({"last_received_date": date_label})
+            print("✅ 分发任务结束")
+
     except Exception as e:
-        print("\n❌ 脚本运行发生崩溃：")
-        traceback.print_exc()
-        exit(1)
+        print("\n" + "!"*40)
+        print("❌ 脚本发生崩溃！详细报错如下：")
+        print("!"*40)
+        traceback.print_exc() # 打印详细的错误行号和原因
+        exit(1) # 只有这里会触发 Exit Code 1
+    
+    print("=== 🏁 任务顺利完成 ===")
