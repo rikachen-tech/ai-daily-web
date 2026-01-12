@@ -35,6 +35,11 @@ APP_ID = "ai-daily-app"
 # 替换为您部署后的正式网页地址
 WEB_URL = "https://rikachen-tech.github.io/ai-daily-web/" 
 
+# --- 🚨 手动修复配置 🚨 ---
+# 想要重发哪天的日报，就把 REPAIR_MODE 设为 True，并填好日期
+REPAIR_MODE = True 
+REPAIR_DATE = "2026-01-12" 
+
 # 核心大佬名单 (已恢复完整 20+ 名单)
 AI_INFLUENCERS = [
     "OpenAI", "sama", "AnthropicAI", "DeepMind", "demishassabis", "MetaAI", "ylecun", "MistralAI", "huggingface", "clem_delangue",
@@ -51,7 +56,6 @@ if not firebase_admin._apps:
         cred_dict = json.loads(FIREBASE_JSON_STR)
         cred = credentials.Certificate(cred_dict)
         firebase_admin.initialize_app(cred)
-        print("✅ Firebase 连接成功")
     except Exception as e:
         print(f"❌ Firebase 初始化失败: {e}")
         exit(1)
@@ -165,6 +169,8 @@ def fetch_gemini_summary(new_content, date_label):
 
 # --- 4. 业务逻辑 ---
 
+# --- 4. 业务逻辑 ---
+
 def handle_otps():
     req_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("verification_requests")
     docs = req_ref.where(filter=FieldFilter("status", "==", "pending")).stream()
@@ -173,22 +179,35 @@ def handle_otps():
         if send_email(data['email'], "【验证码】AI 日报订阅", f"验证码：{data['code']}"):
             doc.reference.update({"status": "sent", "sentAt": firestore.SERVER_TIMESTAMP})
 
-def get_today_report():
+def get_report_logic():
     bj_now = datetime.now(timezone(timedelta(hours=8)))
+    
+    # 修复模式：直接指定日期并重新抓取
+    if REPAIR_MODE:
+        print(f"🛠 [修复模式启动] 正在为 {REPAIR_DATE} 重新生成报告...")
+        target_date_obj = datetime.strptime(REPAIR_DATE, "%Y-%m-%d").replace(tzinfo=timezone(timedelta(hours=8)))
+        raw_data = get_tweets(target_date_obj - timedelta(days=1)) # 抓取该日期前一天的推文
+        
+        report = fetch_gemini_summary(raw_data, REPAIR_DATE)
+        if report:
+            # 覆盖旧缓存
+            db.collection("daily_history").document(REPAIR_DATE).set({
+                "content": report, 
+                "timestamp": firestore.SERVER_TIMESTAMP,
+                "is_repaired": True 
+            })
+            return report, REPAIR_DATE
+        return None, REPAIR_DATE
+
+    # 正常模式
     today_str = bj_now.strftime('%Y-%m-%d')
     doc_ref = db.collection("daily_history").document(today_str)
-    
     snap = doc_ref.get()
     if snap.exists:
-        print(f"✨ 使用缓存报告 ({today_str})")
         return snap.to_dict().get("content"), today_str
     
-    # 抓取昨日数据
     raw_data = get_tweets(bj_now - timedelta(days=1))
-    
-    if not raw_data:
-        print("🛑 调试信息：RapidAPI 未返回任何昨日推文数据。")
-        return None, today_str
+    if not raw_data: return None, today_str
     
     report = fetch_gemini_summary(raw_data, today_str)
     if report:
@@ -196,24 +215,34 @@ def get_today_report():
         return report, today_str
     return None, today_str
 
-def broadcast(report, date):
+def broadcast_logic(report, date):
     print(f"📢 正在分发日报 ({date})...")
     subs_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("subscribers")
     docs = subs_ref.where(filter=FieldFilter("active", "==", True)).stream()
     
     for doc in docs:
         data = doc.to_dict()
-        if data.get("last_received_date") != date:
-            footer = f'<hr><p style="font-size:12px;color:#999;">退订请点击 <a href="{WEB_URL}?action=unsubscribe&email={data["email"]}">此处</a></p>'
-            if send_email(data['email'], f"✨ AI 战略观察日报 [{date}]", report + footer):
-                doc.reference.update({"last_received_date": date})
+        email = data['email']
+        
+        # 修复模式下：无视 last_received_date 检查，全员发送
+        should_send = (data.get("last_received_date") != date) or REPAIR_MODE
+        
+        if should_send:
+            print(f"   -> 正在发送修正版至: {email}")
+            subject = f"✨ [修正版] AI 战略观察日报 [{date}]" if REPAIR_MODE else f"✨ AI 战略观察日报 [{date}]"
+            footer = f'<hr><p style="font-size:12px;color:#999;">收到了错误信息？这是我们的修正版本。退订请点击 <a href="{WEB_URL}?action=unsubscribe&email={email}">此处</a></p>'
+            
+            if send_email(email, subject, report + footer):
+                if not REPAIR_MODE: # 正常模式才更新日期，修复模式不更新以防干扰后续流程
+                    doc.reference.update({"last_received_date": date})
 
 if __name__ == "__main__":
-    print(f"=== 引擎启动 ===")
+    print(f"=== 引擎启动 (修复模式: {REPAIR_MODE}) ===")
     handle_otps()
-    report_content, report_date = get_today_report()
+    report_content, report_date = get_report_logic()
     
     if report_content:
-        broadcast(report_content, report_date)
+        broadcast_logic(report_content, report_date)
+        print("🎉 修正补发任务已完成。")
     else:
-        print("🏁 任务结束：由于 RapidAPI 未抓取到有效数据，已自动跳过后续环节。")
+        print("🛑 任务失败：未能获取有效数据。")
