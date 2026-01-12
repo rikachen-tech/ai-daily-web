@@ -22,7 +22,11 @@ class Config:
     
     # 推荐使用的模型版本
     GEMINI_MODEL = "gemini-2.5-flash-preview-09-2025"
-    
+    # [新增] 手动订阅者列表：如果你有飞书表格，直接把邮箱复制到这里
+    # 运行脚本时，这些邮箱会自动同步到 Firestore 且无需验证
+    MANUAL_SUBS = [
+         "18575634891@163.com"
+    ]
     @staticmethod
     def validate():
         required_keys = [
@@ -59,6 +63,7 @@ def request_with_retry(method, url, max_retries=5, **kwargs):
     return None
 
 # --- 3. 核心引擎类 ---
+# --- 3. 核心引擎类 ---
 
 class AIDailyEngine:
     def __init__(self, config_dict):
@@ -75,6 +80,29 @@ class AIDailyEngine:
         if not firebase_admin._apps:
             firebase_admin.initialize_app(credentials.Certificate(cred_dict))
         return firestore.client()
+
+    def sync_manual_subscribers(self):
+        """[新增] 将代码中手动定义的邮箱同步到数据库"""
+        if not Config.MANUAL_SUBS:
+            return
+            
+        print(f"👥 正在同步手动订阅者列表 ({len(Config.MANUAL_SUBS)} 个)...")
+        subs_ref = self.db.collection(*self.sub_path.split('/'))
+        
+        for email in Config.MANUAL_SUBS:
+            email = email.strip().lower()
+            # 使用邮箱作为文档 ID 避免重复
+            doc_ref = subs_ref.document(email)
+            if not doc_ref.get().exists:
+                doc_ref.set({
+                    "email": email,
+                    "active": True,
+                    "source": "manual_import",
+                    "last_received_date": "",
+                    "created_at": firestore.SERVER_TIMESTAMP
+                })
+                print(f"➕ 已新增订阅者: {email}")
+        print("✅ 手动订阅者同步完成")
 
     def sync_tweets(self):
         """同步过去 24 小时内的推文至资源池"""
@@ -108,7 +136,6 @@ class AIDailyEngine:
                     
                     if c_at >= start_date:
                         doc_ref = self.db.collection(*self.pool_path.split('/')).document(t_id)
-                        # 优化：仅在不存在时写入，利用 Firestore 的 set(..., merge=True) 或简单的 exists 检查
                         if not doc_ref.get().exists:
                             doc_ref.set({
                                 "user": user,
@@ -119,7 +146,7 @@ class AIDailyEngine:
                                 "synced_at": firestore.SERVER_TIMESTAMP
                             })
                             new_count += 1
-                time.sleep(0.5) # 稍微控制频率
+                time.sleep(0.5) 
             except Exception as e:
                 print(f"⚠️ 同步用户 {user} 失败: {e}")
         
@@ -130,16 +157,13 @@ class AIDailyEngine:
         bj_now = datetime.now(timezone(timedelta(hours=8)))
         today_str = bj_now.strftime('%Y-%m-%d')
         
-        # 1. 检查今日是否已生成
         history_ref = self.db.collection(*self.history_path.split('/')).document(today_str)
         existing = history_ref.get()
         if existing.exists:
             print(f"✨ 今日报告 {today_str} 已存在。")
             return existing.to_dict().get("content"), today_str
 
-        # 2. 获取未使用的素材
         pool_ref = self.db.collection(*self.pool_path.split('/'))
-        # 注意：此处遵守 Rule 2，不使用复杂查询，获取后在内存过滤
         docs = list(pool_ref.stream())
         unused_docs = [d for d in docs if not d.to_dict().get("used_in_report")]
         
@@ -147,22 +171,19 @@ class AIDailyEngine:
             print("📭 无新素材可供分析。")
             return None, today_str
 
-        # 按时间排序取最近 50 条
         sorted_docs = sorted(unused_docs, key=lambda x: x.to_dict().get('created_at', datetime(1970,1,1,tzinfo=timezone.utc)), reverse=True)[:50]
         
         input_data = ""
         ids_to_mark = []
         for d in sorted_docs:
             data = d.to_dict()
-            content = data['content'].replace('\n', ' ')[:500] # 截断防止 token 溢出
+            content = data['content'].replace('\n', ' ')[:500] 
             input_data += f"源: @{data['user']} | 链接: {data['url']} | 内容: {content}\n"
             ids_to_mark.append(d.id)
 
-        # 3. 调用 Gemini
         report_html = self._call_gemini_api(input_data)
         
         if report_html:
-            # 4. 存储与批处理更新状态
             history_ref.set({
                 "content": report_html,
                 "timestamp": firestore.SERVER_TIMESTAMP,
@@ -181,7 +202,7 @@ class AIDailyEngine:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{Config.GEMINI_MODEL}:generateContent?key={self.config['GEMINI_API_KEY']}"
         
         system_prompt = f"""
-        # Role
+    # Role
     你是一位顶级的 AI 行业分析师和资深 AI 产品经理导师。你的任务是根据提供的推文资源池（包含过去 7 天未曾分析的全球最前沿的 AI 开发者、产品经理及研究员的动态）并为一位“正从传统策略产品经理转型 AI 产品经理”的用户生成每日深度日报。
    # rules
     1. 只能使用 [数据源] 里的真实信息。
@@ -215,7 +236,6 @@ class AIDailyEngine:
             res = request_with_retry("POST", url, json=payload, timeout=60)
             res_data = res.json()
             report = res_data['candidates'][0]['content']['parts'][0]['text']
-            # 清理 Markdown 转义
             return report.replace('```html', '').replace('```', '').strip()
         except Exception as e:
             print(f"❌ Gemini 分析失败: {e}")
@@ -234,7 +254,6 @@ class AIDailyEngine:
             if not email or data.get("last_received_date") == date_label:
                 continue
             
-            # 构建 HTML 邮件内容
             full_content = f"""
             <html>
                 <body style="font-family: sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: auto;">
@@ -272,21 +291,23 @@ class AIDailyEngine:
 
 # --- 4. 运行入口 ---
 
-if __name__ == "__main__":】
-
+if __name__ == "__main__":
     print(f"=== 🚀 AI 洞察引擎启动 | {datetime.now().strftime('%Y-%m-%d %H:%M')} ===")
     try:
         # 1. 初始化
         env_config = Config.validate()
         engine = AIDailyEngine(env_config)
         
-        # 2. 抓取动态
+        # 2. [新增] 同步手动订阅者 (如果 Config.MANUAL_SUBS 不为空)
+        engine.sync_manual_subscribers()
+        
+        # 3. 抓取动态
         engine.sync_tweets()
         
-        # 3. 生成日报
+        # 4. 生成日报
         report_content, date_tag = engine.generate_daily_report()
         
-        # 4. 分发邮件
+        # 5. 分发邮件
         if report_content:
             engine.distribute_email(report_content, date_tag)
             print("🎉 所有任务已圆满完成！")
