@@ -76,48 +76,68 @@ def send_email(to_email, subject, html_content):
         return False
 
 def get_tweets(target_date_obj):
+    """抓取推文并实时打印采样数据，方便调试"""
     all_text = ""
     start = target_date_obj.replace(hour=0, minute=0, second=0)
     end = target_date_obj.replace(hour=23, minute=59, second=59)
-    print(f"📡 正在抓取昨日动态 ({start.strftime('%Y-%m-%d')})...")
+    print(f"📡 正在检查时间段: {start.strftime('%Y-%m-%d %H:%M:%S')} 至 {end.strftime('%Y-%m-%d %H:%M:%S')}")
     
+    total_found = 0
     for i, user in enumerate(AI_INFLUENCERS):
         try:
+            print(f"   [{i+1}/{len(AI_INFLUENCERS)}] 正在请求 @{user}...")
             res = requests.get(f"https://{RAPIDAPI_HOST}/timeline.php", 
                                headers={"X-RapidAPI-Key": RAPIDAPI_KEY, "X-RapidAPI-Host": RAPIDAPI_HOST}, 
                                params={"screenname": user}, timeout=20)
+            
             if res.status_code == 200:
                 data = res.json()
-                for tweet in data.get('timeline', [])[:3]:
+                timeline = data.get('timeline', [])
+                user_found_count = 0
+                for tweet in timeline[:5]:
                     c_at = datetime.strptime(tweet['created_at'], "%a %b %d %H:%M:%S +0000 %Y").replace(tzinfo=timezone.utc)
                     if start <= c_at <= end:
                         content = tweet.get('text') or tweet.get('full_text', "")
                         t_id = tweet.get('tweet_id')
                         t_url = f"https://x.com/{user}/status/{t_id}"
-                        all_text += f"作者: @{user} | 原文链接: {t_url} | 内容: {content}\n"
+                        all_text += f"USER: @{user} | LINK: {t_url} | CONTENT: {content}\n"
+                        total_found += 1
+                        user_found_count += 1
+                if user_found_count > 0:
+                    print(f"      ✅ 发现 {user_found_count} 条动态: {content[:30]}...")
+            elif res.status_code == 429:
+                print("   ⚠️ 警告: RapidAPI 额度已用尽 (Rate Limit)。")
+                break
+            else:
+                print(f"   ❓ API 返回状态码: {res.status_code}")
             time.sleep(1.2)
-        except: continue
-    print(f"✅ 抓取完成")
-    return all_text
+        except Exception as e:
+            print(f"   ❌ 抓取 @{user} 异常: {e}")
+            continue
+            
+    return all_text if total_found > 0 else None
 
 def fetch_gemini_summary(new_content, date_label):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={GEMINI_API_KEY}"
     
     system_prompt = """
    # Role
-    你是一位顶级的 AI 行业分析师和资深 AI 产品经理导师。你的任务是追踪 Twitter (X) 上全球最前沿的 AI 开发者、产品经理及研究员的动态，并为一位“正从搜索产品经理转型 AI 产品经理”的用户生成每日深度日报。
-
+    你是一位顶级的 AI 行业分析师和资深 AI 产品经理导师。你的任务是追踪 Twitter (X) 上全球最前沿的 AI 开发者、产品经理及研究员的动态，并为一位“正从传统策略产品经理转型 AI 产品经理”的用户生成每日深度日报。
+   # rules
+    1. 只能使用 [数据源] 里的真实信息。
+    2. 如果数据源里的推文少于 3 条，请如实告知用户今日动态较少，严禁编造。
+    3. 严禁生成数据源之外的任何 x.com 链接。
     # Knowledge Source & Focus
     重点关注：
     1. 模型演进：LLM 新能力、多模态进展。
     2. Agent 架构：规划(Planning)、记忆(Memory)、工具使用(Tool Use)的实际案例。
     3. AI UX 设计：新的交互范式（如 Generative UI）。
-    4. 技术落地：RAG 与搜索结合的最新优化思路。
+    4. 技术落地：LLM和搜索结合的最新优化思路。
     5. 行业洞察：AI 产品的商业模式、估值与市场反馈。
 
     # Daily Report Structure (请严格按此 HTML 格式输出)
-    1. 📅 [日期] AI 行业早报：从搜索迈向 Agent
-    2. 🔥 今日核心趋势 (Top 3)：分析今日最具启发性的 3 件事，包含动态描述和 PM 视角的价值判断。
+    1. 📅 [日期] AI 行业早报：[提炼核心关键起一个标题]
+    2. 🔥 今日核心趋势 (Top 3)：分析今日最具启发性的 3 件事，包含动态描述和 PM 视角的价值判断。必须包含对应的 <a href="...">查看原文</a> 链接。
     3. 🛠 专家深度见解 (Expert Insights)：总结核心观点，必须包含对应的 <a href="...">查看原文</a> 链接。
     4. 🔍 搜索 vs. AI 专题 (Search to AI Bridge)：【针对性模块】帮助用户将搜索经验转化为 AI 能力的建议。
     5. 🚀 必读 Link & 产品拆解：提供 2-3 个 Demo 链接，必须使用 HTML 超链接。
@@ -130,9 +150,10 @@ def fetch_gemini_summary(new_content, date_label):
     """
     
     payload = {
-        "contents": [{"parts": [{"text": f"日期：{date_label}\n数据：\n{new_content}"}]}],
+        "contents": [{"parts": [{"text": f"日期：{date_label}\n[数据源]:\n{new_content}"}]}],
         "systemInstruction": {"parts": [{"text": system_prompt}]}
     }
+    
     try:
         print("🤖 正在请求 Gemini 2.5 进行深度分析...")
         res = requests.post(url, json=payload, timeout=60)
@@ -145,19 +166,12 @@ def fetch_gemini_summary(new_content, date_label):
 # --- 4. 业务逻辑 ---
 
 def handle_otps():
-    """实时处理验证码"""
-    print("🔍 扫描待处理验证码...")
     req_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("verification_requests")
     docs = req_ref.where(filter=FieldFilter("status", "==", "pending")).stream()
-    
-    count = 0
     for doc in docs:
         data = doc.to_dict()
-        email, code = data['email'], data['code']
-        if send_email(email, "【验证码】AI 日报订阅确认", f"您的验证码是：{code}"):
+        if send_email(data['email'], "【验证码】AI 日报订阅", f"验证码：{data['code']}"):
             doc.reference.update({"status": "sent", "sentAt": firestore.SERVER_TIMESTAMP})
-            count += 1
-    print(f"   -> 已处理 {count} 个验证码")
 
 def get_today_report():
     bj_now = datetime.now(timezone(timedelta(hours=8)))
@@ -166,66 +180,40 @@ def get_today_report():
     
     snap = doc_ref.get()
     if snap.exists:
+        print(f"✨ 使用缓存报告 ({today_str})")
         return snap.to_dict().get("content"), today_str
     
-    content = get_tweets(bj_now - timedelta(days=1))
-    if not content: return None, today_str
+    # 抓取昨日数据
+    raw_data = get_tweets(bj_now - timedelta(days=1))
     
-    report = fetch_gemini_summary(content, today_str)
+    if not raw_data:
+        print("🛑 调试信息：RapidAPI 未返回任何昨日推文数据。")
+        return None, today_str
+    
+    report = fetch_gemini_summary(raw_data, today_str)
     if report:
         doc_ref.set({"content": report, "timestamp": firestore.SERVER_TIMESTAMP})
         return report, today_str
     return None, today_str
 
-def broadcast_to_subscribers(report_html, report_date):
-    """
-    核心逻辑升级：基于用户状态的精准群发/补发。
-    如果当日已经自动触发给 A，手动触发则跳过；如果 A 没收到，手动触发则补发。
-    """
-    print(f"📢 正在检查并分发日报 ({report_date})...")
+def broadcast(report, date):
+    print(f"📢 正在分发日报 ({date})...")
     subs_ref = db.collection("artifacts").document(APP_ID).collection("public").document("data").collection("subscribers")
-    # 只针对已激活的用户
     docs = subs_ref.where(filter=FieldFilter("active", "==", True)).stream()
-    
-    sent_count = 0
-    skip_count = 0
     
     for doc in docs:
         data = doc.to_dict()
-        email = data['email']
-        # 检查该用户最后一次接收日报的日期
-        last_received = data.get("last_received_date", "")
-        
-        # 如果用户今天还没收到过日报
-        if last_received != report_date:
-            print(f"   -> 正在发送至: {email}")
-            footer = f'<hr><p style="font-size:12px;color:#999;">您收到此件是因为已订阅。退订请点击 <a href="{WEB_URL}?action=unsubscribe&email={email}">此处</a></p>'
-            if send_email(email, f"✨ AI 战略观察日报 [{report_date}]", report_html + footer):
-                # 成功发送后，立即更新该用户的“最后接收日期”
-                doc.reference.update({
-                    "last_received_date": report_date,
-                    "welcome_sent": True # 兼容旧逻辑
-                })
-                sent_count += 1
-        else:
-            skip_count += 1
-
-    print(f"🎉 处理完毕：成功发送/补发 {sent_count} 位用户，跳过 {skip_count} 位已接收用户。")
+        if data.get("last_received_date") != date:
+            footer = f'<hr><p style="font-size:12px;color:#999;">退订请点击 <a href="{WEB_URL}?action=unsubscribe&email={data["email"]}">此处</a></p>'
+            if send_email(data['email'], f"✨ AI 战略观察日报 [{date}]", report + footer):
+                doc.reference.update({"last_received_date": date})
 
 if __name__ == "__main__":
-    bj_now = datetime.now(timezone(timedelta(hours=8)))
-    print(f"=== 引擎启动 | 北京时间: {bj_now.strftime('%Y-%m-%d %H:%M:%S')} ===")
-
-    # 1. 扫描验证码 (最高优先级)
+    print(f"=== 引擎启动 ===")
     handle_otps()
+    report_content, report_date = get_today_report()
     
-    # 2. 获取/生成今日日报内容
-    report, date_label = get_today_report()
-    
-    # 3. 执行分发逻辑 (不再区分定时和手动，统一由用户接收状态驱动)
-    if report:
-        broadcast_to_subscribers(report, date_label)
+    if report_content:
+        broadcast(report_content, report_date)
     else:
-        print("⚠️ 无法获取当日报告内容，跳过分发环节。")
-    
-    print("=== ✅ 任务全部处理完毕 ===")
+        print("🏁 任务结束：由于 RapidAPI 未抓取到有效数据，已自动跳过后续环节。")
