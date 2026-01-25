@@ -2,9 +2,10 @@ name: AI Daily Report Automation
 
 on:
   schedule:
-    # 关键：每 1小时自动醒来一次，检查验证码和新用户
-    - cron: '0 * * * *'
-  workflow_dispatch: # 允许在 GitHub 后台手动点按钮运行
+    # 每天 UTC 时间 01:00 运行（对应北京时间上午 9:00）
+    # 这样每天只运行一次，仅消耗 19 次 RapidAPI 额度
+    - cron: '0 1 * * *'
+  workflow_dispatch: # 允许在 GitHub 后台手动点击 "Run workflow" 按钮测试
 
 jobs:
   build:
