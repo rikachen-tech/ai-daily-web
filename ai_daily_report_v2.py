@@ -25,7 +25,7 @@ class Config:
     # [新增] 手动订阅者列表：如果你有飞书表格，直接把邮箱复制到这里
     # 运行脚本时，这些邮箱会自动同步到 Firestore 且无需验证
     MANUAL_SUBS = [
-         "18575634891@163.com"
+         ""
     ]
     @staticmethod
     def validate():
