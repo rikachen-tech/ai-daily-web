@@ -33,7 +33,6 @@
             border-color: rgba(29, 161, 242, 0.3);
         }
 
-        /* 极简按钮 */
         .btn-primary {
             background: #ffffff;
             color: #000000;
@@ -50,7 +49,6 @@
             transform: translateY(0);
         }
 
-        /* 背景微光 */
         .glow {
             position: absolute;
             width: 600px;
@@ -60,7 +58,6 @@
             pointer-events: none;
         }
 
-        /* 头像容器 */
         .avatar-container {
             position: relative;
             width: 56px;
@@ -88,9 +85,19 @@
             border-radius: 50%;
             font-size: 8px;
             display: flex;
-            items-center: center;
+            align-items: center;
             justify-content: center;
             border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        /* 隐藏元素的动画 */
+        .fade-in {
+            animation: fadeIn 0.5s ease forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
     </style>
 </head>
@@ -117,8 +124,7 @@
 
         <!-- 硅谷大佬展示区 -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-16">
-            <!-- Sam Altman -->
-            <div class="influencer-card glass-card p-5 rounded-2xl">
+            <div class="influencer-card glass-card p-5 rounded-2xl text-center">
                 <div class="avatar-container">
                     <img src="https://unavatar.io/twitter/sama" class="avatar-img" alt="Sam Altman" onerror="this.src='https://api.dicebear.com/7.x/initials/svg?seed=SA'" />
                     <div class="x-badge"><i class="fab fa-x-twitter"></i></div>
@@ -127,8 +133,7 @@
                 <p class="text-[10px] text-gray-500 mt-1">CEO, OpenAI</p>
             </div>
 
-            <!-- Andrej Karpathy -->
-            <div class="influencer-card glass-card p-5 rounded-2xl">
+            <div class="influencer-card glass-card p-5 rounded-2xl text-center">
                 <div class="avatar-container">
                     <img src="https://unavatar.io/twitter/karpathy" class="avatar-img" alt="Andrej Karpathy" onerror="this.src='https://api.dicebear.com/7.x/initials/svg?seed=AK'" />
                     <div class="x-badge"><i class="fab fa-x-twitter"></i></div>
@@ -137,8 +142,7 @@
                 <p class="text-[10px] text-gray-500 mt-1">Founding Member</p>
             </div>
 
-            <!-- Demis Hassabis -->
-            <div class="influencer-card glass-card p-5 rounded-2xl">
+            <div class="influencer-card glass-card p-5 rounded-2xl text-center">
                 <div class="avatar-container">
                     <img src="https://unavatar.io/twitter/demishassabis" class="avatar-img" alt="Demis Hassabis" onerror="this.src='https://api.dicebear.com/7.x/initials/svg?seed=DH'" />
                     <div class="x-badge"><i class="fab fa-x-twitter"></i></div>
@@ -147,8 +151,7 @@
                 <p class="text-[10px] text-gray-500 mt-1">CEO, DeepMind</p>
             </div>
 
-            <!-- Yann LeCun -->
-            <div class="influencer-card glass-card p-5 rounded-2xl">
+            <div class="influencer-card glass-card p-5 rounded-2xl text-center">
                 <div class="avatar-container">
                     <img src="https://unavatar.io/twitter/ylecun" class="avatar-img" alt="Yann LeCun" onerror="this.src='https://api.dicebear.com/7.x/initials/svg?seed=YL'" />
                     <div class="x-badge"><i class="fab fa-x-twitter"></i></div>
@@ -158,18 +161,35 @@
             </div>
         </div>
 
-        <!-- 订阅区域 -->
-        <div class="max-w-md mx-auto">
-            <div class="glass-card p-1.5 rounded-2xl flex flex-col sm:flex-row gap-2">
+        <!-- 订阅区域容器 -->
+        <div class="max-w-md mx-auto relative min-h-[120px]">
+            
+            <!-- 步骤 1: 邮箱输入 -->
+            <div id="step-1" class="glass-card p-1.5 rounded-2xl flex flex-col sm:flex-row gap-2 transition-all duration-300">
                 <input type="email" id="email-input" placeholder="输入邮箱地址..." 
                        class="bg-transparent text-white px-6 py-4 rounded-xl flex-1 outline-none text-sm placeholder:text-gray-600">
                 <button id="send-btn" class="btn-primary px-8 py-4 rounded-xl font-bold text-sm whitespace-nowrap">
                     免费开启订阅
                 </button>
             </div>
+
+            <!-- 步骤 2: 验证码输入 (初始隐藏) -->
+            <div id="step-2" class="hidden glass-card p-5 rounded-2xl fade-in">
+                <p class="text-xs text-gray-400 mb-4">验证码已发送至 <span id="target-email" class="text-white font-medium"></span></p>
+                <div class="flex flex-col gap-3">
+                    <input type="text" id="code-input" maxlength="6" placeholder="输入 6 位验证码" 
+                           class="bg-white/5 text-white px-6 py-4 rounded-xl outline-none text-center text-2xl tracking-[1em] font-mono border border-white/10 focus:border-blue-500/50 transition-all">
+                    <button id="verify-btn" class="btn-primary w-full py-4 rounded-xl font-bold text-sm">
+                        确认激活订阅
+                    </button>
+                    <button id="back-btn" class="text-gray-500 text-[10px] uppercase tracking-widest hover:text-white transition-colors">
+                        返回修改邮箱
+                    </button>
+                </div>
+            </div>
             
-            <!-- 状态反馈 -->
-            <div id="msg-box" class="hidden mt-6 p-4 rounded-xl text-sm border animate-pulse"></div>
+            <!-- 状态反馈消息 -->
+            <div id="msg-box" class="hidden mt-6 p-4 rounded-xl text-sm border"></div>
         </div>
 
         <div class="mt-16 flex items-center justify-center gap-6 text-gray-600 text-[10px] uppercase tracking-widest font-medium">
@@ -182,43 +202,100 @@
     </div>
 
     <script>
+        const step1 = document.getElementById('step-1');
+        const step2 = document.getElementById('step-2');
         const sendBtn = document.getElementById('send-btn');
+        const verifyBtn = document.getElementById('verify-btn');
+        const backBtn = document.getElementById('back-btn');
+        
         const emailInput = document.getElementById('email-input');
+        const codeInput = document.getElementById('code-input');
+        const targetEmailLabel = document.getElementById('target-email');
         const msgBox = document.getElementById('msg-box');
 
+        let currentEmail = "";
+
+        // 发送验证码逻辑 (Step 1 -> Step 2)
         sendBtn.addEventListener('click', async () => {
-            const email = emailInput.value.trim();
-            if (!email) {
+            currentEmail = emailInput.value.trim();
+            if (!currentEmail) {
                 showMsg('请输入邮箱地址以接收日报', 'error');
                 return;
             }
 
-            sendBtn.innerText = '正在校验域名...';
+            sendBtn.innerText = '正在发送...';
             sendBtn.disabled = true;
             msgBox.classList.add('hidden');
 
             try {
-                // 执行 Vercel 后端发信逻辑
                 const response = await fetch('/api/send-code', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: email })
+                    body: JSON.stringify({ email: currentEmail })
                 });
 
                 const result = await response.json();
 
                 if (response.ok && result.success) {
-                    showMsg('✨ 验证码已发送至您的邮箱，请查收！', 'success');
+                    // 切换 UI 到步骤 2
+                    targetEmailLabel.innerText = currentEmail;
+                    step1.classList.add('hidden');
+                    step2.classList.remove('hidden');
+                    showMsg('✨ 验证码已发送，请查收！', 'success');
                 } else {
-                    showMsg('⚠️ 发送失败: ' + (result.error || 'API 限制'), 'error');
+                    showMsg('⚠️ 发送失败: ' + (result.error || '请求受限'), 'error');
                 }
             } catch (err) {
                 console.error(err);
-                showMsg('网络异常，请确保 Vercel 环境变量已配置', 'error');
+                showMsg('网络异常，请稍后再试', 'error');
             } finally {
                 sendBtn.innerText = '免费开启订阅';
                 sendBtn.disabled = false;
             }
+        });
+
+        // 验证验证码逻辑 (Step 2 提交)
+        verifyBtn.addEventListener('click', async () => {
+            const code = codeInput.value.trim();
+            if (code.length < 6) {
+                showMsg('请输入 6 位完整的验证码', 'error');
+                return;
+            }
+
+            verifyBtn.innerText = '正在激活...';
+            verifyBtn.disabled = true;
+
+            try {
+                // 这里调用你的验证 API
+                const response = await fetch('/api/verify-code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: currentEmail, code: code })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    showMsg('🎉 订阅成功！欢迎来到 AI Insights Daily。', 'success');
+                    step2.innerHTML = `<div class="py-8 text-green-400 font-bold">✨ 订阅成功！</div>`;
+                } else {
+                    showMsg('❌ 验证码错误或已过期', 'error');
+                }
+            } catch (err) {
+                // 如果你还没写 verify-code.js，这里会报错，所以我们做个模拟成功展示
+                console.warn('后端 verify-code 接口尚未就绪');
+                showMsg('服务器逻辑正在同步中，请稍后再次确认', 'error');
+            } finally {
+                verifyBtn.innerText = '确认激活订阅';
+                verifyBtn.disabled = false;
+            }
+        });
+
+        // 返回修改邮箱
+        backBtn.addEventListener('click', () => {
+            step2.classList.add('hidden');
+            step1.classList.remove('hidden');
+            msgBox.classList.add('hidden');
         });
 
         function showMsg(text, type) {
