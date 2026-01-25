@@ -48,21 +48,20 @@ AI_INFLUENCERS = [
 ]
 
 # --- 2. 工具函数 (带重试逻辑) ---
-
-def request_with_retry(method, url, max_retries=5, **kwargs):
-    """带指数退避的请求包装器"""
+def request_with_retry(method, url, max_retries=3, **kwargs):
     for i in range(max_retries):
         try:
             response = requests.request(method, url, **kwargs)
+            # 特殊处理额度耗尽错误
+            if response.status_code == 429:
+                print("🚨 警告：RapidAPI 额度已耗尽 (429)！请调低运行频率。")
+                return response
             response.raise_for_status()
             return response
         except Exception as e:
             if i == max_retries - 1: raise e
-            wait_time = 2 ** i
-            time.sleep(wait_time)
+            time.sleep(2 ** i)
     return None
-
-# --- 3. 核心引擎类 ---
 # --- 3. 核心引擎类 ---
 
 class AIDailyEngine:
@@ -105,26 +104,34 @@ class AIDailyEngine:
         print("✅ 手动订阅者同步完成")
 
     def sync_tweets(self):
-        """同步过去 24 小时内的推文至资源池"""
         bj_now = datetime.now(timezone(timedelta(hours=8)))
-        start_date = bj_now - timedelta(days=1) # 每日脚本只需抓取近24h
+        start_date = bj_now - timedelta(days=1)
         
-        print(f"📡 开始同步推文资源池...")
+        print(f"📡 开始同步推文资源池（目标：24h 内动态）...")
         new_count = 0
         
-        for user in AI_INFLUENCERS:
+        headers = {
+            "X-RapidAPI-Key": self.config["RAPIDAPI_KEY"],
+            "X-RapidAPI-Host": "twitter-api45.p.rapidapi.com"
+        }
+
+        for index, user in enumerate(AI_INFLUENCERS):
             try:
-                headers = {
-                    "X-RapidAPI-Key": self.config["RAPIDAPI_KEY"],
-                    "X-RapidAPI-Host": "twitter-api45.p.rapidapi.com"
-                }
                 res = self.session.get(
                     "https://twitter-api45.p.rapidapi.com/timeline.php",
                     headers=headers,
                     params={"screenname": user},
                     timeout=20
                 )
-                if res.status_code != 200: continue
+                
+                # 打印当前额度状态（从响应头提取）
+                remaining = res.headers.get('x-ratelimit-requests-remaining')
+                if index == 0 and remaining:
+                    print(f"📊 提示：当前 API 剩余可用额度约: {remaining}")
+
+                if res.status_code != 200: 
+                    if res.status_code == 429: break # 额度没了直接退出循环
+                    continue
                 
                 timeline = res.json().get('timeline', [])
                 for tweet in timeline[:10]:
@@ -152,8 +159,7 @@ class AIDailyEngine:
         
         print(f"✅ 资源池更新完成，新增 {new_count} 条。")
 
-    def generate_daily_report(self):
-        """生成并持久化日报"""
+def generate_daily_report(self):
         bj_now = datetime.now(timezone(timedelta(hours=8)))
         today_str = bj_now.strftime('%Y-%m-%d')
         
@@ -165,12 +171,14 @@ class AIDailyEngine:
 
         pool_ref = self.db.collection(*self.pool_path.split('/'))
         docs = list(pool_ref.stream())
+        # 过滤出未使用的
         unused_docs = [d for d in docs if not d.to_dict().get("used_in_report")]
         
         if not unused_docs:
             print("📭 无新素材可供分析。")
             return None, today_str
 
+        # 按时间排序取前 50
         sorted_docs = sorted(unused_docs, key=lambda x: x.to_dict().get('created_at', datetime(1970,1,1,tzinfo=timezone.utc)), reverse=True)[:50]
         
         input_data = ""
@@ -197,6 +205,7 @@ class AIDailyEngine:
             return report_html, today_str
             
         return None, today_str
+
 
     def _call_gemini_api(self, text):
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{Config.GEMINI_MODEL}:generateContent?key={self.config['GEMINI_API_KEY']}"
