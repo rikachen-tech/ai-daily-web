@@ -1,139 +1,330 @@
+
 import os
 import json
 import requests
-import resend  # 统一使用 Resend SDK
-from datetime import datetime, timezone, timedelta
+import smtplib
+import time
+import traceback
+from datetime import datetime, timedelta, timezone
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.header import Header
+from email.utils import formataddr
 
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# --- 配置管理 ---
+# --- 1. 配置管理 ---
 class Config:
     APP_ID = "ai-daily-app"
-    # 使用具备强搜索能力的模型
+    WEB_URL = "https://ai-daily-web.vercel.app/"
+    SMTP_SERVER = "smtp.gmail.com"
+    SMTP_PORT = 587
+    
+    # 推荐使用的模型版本
     GEMINI_MODEL = "gemini-2.5-flash-preview-09-2025"
-    
-    # 核心环境变量 (确保在 GitHub Secrets 中已配置)
-    GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-    RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
-    FIREBASE_CONFIG_JSON = os.environ.get("FIREBASE_CONFIG_JSON")
-    
-    # 你的验证域名 (已在 Resend 验证成功)
-    SENDER_DOMAIN = "insightdata.space"
+    # [新增] 手动订阅者列表：如果你有飞书表格，直接把邮箱复制到这里
+    # 运行脚本时，这些邮箱会自动同步到 Firestore 且无需验证
+    MANUAL_SUBS = [
+         ""
+    ]
+    @staticmethod
+    def validate():
+        required_keys = [
+            "RAPIDAPI_KEY", "GEMINI_API_KEY", 
+            "SENDER_EMAIL", "SENDER_PASSWORD", 
+            "FIREBASE_CONFIG_JSON"
+        ]
+        config = {k: os.environ.get(k) for k in required_keys}
+        missing = [k for k, v in config.items() if not v]
+        if missing:
+            raise ValueError(f"GitHub Secrets 缺失项: {', '.join(missing)}")
+        return config
 
-# 你的“私人关注列表”
+# 大佬名单 (建议后续移至 Firestore 动态管理)
 AI_INFLUENCERS = [
-    "OpenAI (sama, gdb)", "Anthropic (Dario Amodei)", "DeepMind (Demis Hassabis)", 
-    "Meta AI (Yann LeCun)", "Andrej Karpathy", "Mustafa Suleyman", "Aravind Srinivas (Perplexity)",
-    "Rowan Cheung", "The Rundown AI", "Dr. Jim Fan (NVIDIA)", "LlamaIndex", "LangChain"
+    "OpenAI", "sama", "AnthropicAI", "DeepMind", "demishassabis", "MetaAI", "ylecun", 
+    "karpathy", "AravSrinivas", "mustafasuleyman", "gdb", "therundownai", "rowancheung",
+    "pete_huang", "tldr", "bentossell", "alliekmiller", "DrJimFan", "llama_index"
 ]
 
-# --- AI Agent 类 ---
-class AIAgentResearcher:
-    def __init__(self):
-        self._init_firebase()
-        self.db = firestore.client()
-        # 初始化 Resend
-        resend.api_key = Config.RESEND_API_KEY
+# --- 2. 工具函数 (带重试逻辑) ---
+def request_with_retry(method, url, max_retries=3, **kwargs):
+    for i in range(max_retries):
+        try:
+            response = requests.request(method, url, **kwargs)
+            # 特殊处理额度耗尽错误
+            if response.status_code == 429:
+                print("🚨 警告：RapidAPI 额度已耗尽 (429)！请调低运行频率。")
+                return response
+            response.raise_for_status()
+            return response
+        except Exception as e:
+            if i == max_retries - 1: raise e
+            time.sleep(2 ** i)
+    return None
+# --- 3. 核心引擎类 ---
+
+class AIDailyEngine:
+    def __init__(self, config_dict):
+        self.config = config_dict
+        self.db = self._init_firebase()
+        self.session = requests.Session()
+        # 按照规范设置路径
+        self.pool_path = f"artifacts/{Config.APP_ID}/public/data/tweet_pool"
+        self.history_path = f"artifacts/{Config.APP_ID}/public/data/daily_history"
+        self.sub_path = f"artifacts/{Config.APP_ID}/public/data/subscribers"
 
     def _init_firebase(self):
-        """初始化数据库连接"""
-        cred_dict = json.loads(Config.FIREBASE_CONFIG_JSON)
+        cred_dict = json.loads(self.config["FIREBASE_CONFIG_JSON"])
         if not firebase_admin._apps:
             firebase_admin.initialize_app(credentials.Certificate(cred_dict))
+        return firestore.client()
 
-    def run_agent_task(self):
-        """Agent 核心逻辑：定向追踪关注列表"""
-        print(f"🕵️ Agent 正在定向追踪你的关注列表 ({len(AI_INFLUENCERS)} 个目标)...")
+    def sync_manual_subscribers(self):
+        """[新增] 将代码中手动定义的邮箱同步到数据库"""
+        if not Config.MANUAL_SUBS:
+            return
+            
+        print(f"👥 正在同步手动订阅者列表 ({len(Config.MANUAL_SUBS)} 个)...")
+        subs_ref = self.db.collection(*self.sub_path.split('/'))
         
-        influencer_list_str = ", ".join(AI_INFLUENCERS)
+        for email in Config.MANUAL_SUBS:
+            email = email.strip().lower()
+            # 使用邮箱作为文档 ID 避免重复
+            doc_ref = subs_ref.document(email)
+            if not doc_ref.get().exists:
+                doc_ref.set({
+                    "email": email,
+                    "active": True,
+                    "source": "manual_import",
+                    "last_received_date": "",
+                    "created_at": firestore.SERVER_TIMESTAMP
+                })
+                print(f"➕ 已新增订阅者: {email}")
+        print("✅ 手动订阅者同步完成")
+
+    def sync_tweets(self):
+        bj_now = datetime.now(timezone(timedelta(hours=8)))
+        start_date = bj_now - timedelta(days=1)
         
-        # 针对产品经理视角的定向 Prompt
-        prompt = f"""
-        今天的日期是 {datetime.now().strftime('%Y-%m-%d')}。
+        print(f"📡 开始同步推文资源池（目标：24h 内动态）...")
+        new_count = 0
         
-        你现在的身份是我的“硅谷情报助理”。我有一个特定的关注列表：[{influencer_list_str}]。
+        headers = {
+            "X-RapidAPI-Key": self.config["RAPIDAPI_KEY"],
+            "X-RapidAPI-Host": "twitter-api45.p.rapidapi.com"
+        }
+
+        for index, user in enumerate(AI_INFLUENCERS):
+            try:
+                res = self.session.get(
+                    "https://twitter-api45.p.rapidapi.com/timeline.php",
+                    headers=headers,
+                    params={"screenname": user},
+                    timeout=20
+                )
+                
+                # 打印当前额度状态（从响应头提取）
+                remaining = res.headers.get('x-ratelimit-requests-remaining')
+                if index == 0 and remaining:
+                    print(f"📊 提示：当前 API 剩余可用额度约: {remaining}")
+
+                if res.status_code != 200: 
+                    if res.status_code == 429: break # 额度没了直接退出循环
+                    continue
+                
+                timeline = res.json().get('timeline', [])
+                for tweet in timeline[:10]:
+                    t_id = str(tweet.get('tweet_id'))
+                    c_at_str = tweet.get('created_at')
+                    if not t_id or not c_at_str: continue
+                    
+                    c_at = datetime.strptime(c_at_str, "%a %b %d %H:%M:%S +0000 %Y").replace(tzinfo=timezone.utc)
+                    
+                    if c_at >= start_date:
+                        doc_ref = self.db.collection(*self.pool_path.split('/')).document(t_id)
+                        if not doc_ref.get().exists:
+                            doc_ref.set({
+                                "user": user,
+                                "content": tweet.get('text', ""),
+                                "url": f"https://x.com/{user}/status/{t_id}",
+                                "created_at": c_at,
+                                "used_in_report": False,
+                                "synced_at": firestore.SERVER_TIMESTAMP
+                            })
+                            new_count += 1
+                time.sleep(0.5) 
+            except Exception as e:
+                print(f"⚠️ 同步用户 {user} 失败: {e}")
         
-        请利用搜索工具，专门调查这些人在过去 24 小时内在 Twitter(X)、官方博客或新闻中发布了哪些最新动态。
+        print(f"✅ 资源池更新完成，新增 {new_count} 条。")
+
+def generate_daily_report(self):
+        bj_now = datetime.now(timezone(timedelta(hours=8)))
+        today_str = bj_now.strftime('%Y-%m-%d')
         
-        任务要求：
-        1. 聚焦：只关注我给出的这些人或公司的直出动态。
-        2. 提炼：作为产品经理，请告诉我这些动态背后代表了什么产品趋势或竞争策略。
-        3. 格式：以精美的 HTML 格式输出。每个动态必须包含：
-           - 来源（是谁说的/做的）
-           - 核心内容简述
-           - PM 视角解读（为什么这个重要）
+        history_ref = self.db.collection(*self.history_path.split('/')).document(today_str)
+        existing = history_ref.get()
+        if existing.exists:
+            print(f"✨ 今日报告 {today_str} 已存在。")
+            return existing.to_dict().get("content"), today_str
+
+        pool_ref = self.db.collection(*self.pool_path.split('/'))
+        docs = list(pool_ref.stream())
+        # 过滤出未使用的
+        unused_docs = [d for d in docs if not d.to_dict().get("used_in_report")]
         
-        如果没有查到特定的人的动态，请略过，只呈现最有价值的 3-5 条。
-        """
+        if not unused_docs:
+            print("📭 无新素材可供分析。")
+            return None, today_str
+
+        # 按时间排序取前 50
+        sorted_docs = sorted(unused_docs, key=lambda x: x.to_dict().get('created_at', datetime(1970,1,1,tzinfo=timezone.utc)), reverse=True)[:50]
         
-        report_html = self._call_gemini_with_search(prompt)
+        input_data = ""
+        ids_to_mark = []
+        for d in sorted_docs:
+            data = d.to_dict()
+            content = data['content'].replace('\n', ' ')[:500] 
+            input_data += f"源: @{data['user']} | 链接: {data['url']} | 内容: {content}\n"
+            ids_to_mark.append(d.id)
+
+        report_html = self._call_gemini_api(input_data)
         
         if report_html:
-            print("✅ 定向研报已生成。")
-            date_str = datetime.now().strftime('%Y-%m-%d')
-            self._save_and_distribute(report_html, date_str)
-        else:
-            print("❌ Agent 未能获取到关注列表的最新动态。")
+            history_ref.set({
+                "content": report_html,
+                "timestamp": firestore.SERVER_TIMESTAMP,
+                "sources": len(ids_to_mark)
+            })
+            
+            batch = self.db.batch()
+            for t_id in ids_to_mark:
+                batch.update(pool_ref.document(t_id), {"used_in_report": True})
+            batch.commit()
+            return report_html, today_str
+            
+        return None, today_str
 
-    def _call_gemini_with_search(self, prompt):
-        """调用智能体搜索工具"""
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{Config.GEMINI_MODEL}:generateContent?key={Config.GEMINI_API_KEY}"
+
+    def _call_gemini_api(self, text):
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{Config.GEMINI_MODEL}:generateContent?key={self.config['GEMINI_API_KEY']}"
+        
+        system_prompt = f"""
+    # Role
+    你是一位顶级的 AI 行业分析师和资深 AI 产品经理导师。你的任务是根据提供的推文资源池（包含过去 7 天未曾分析的全球最前沿的 AI 开发者、产品经理及研究员的动态）并为一位“正从传统策略产品经理转型 AI 产品经理”的用户生成每日深度日报。
+   # rules
+    1. 只能使用 [数据源] 里的真实信息。
+    2. 如果数据源里的推文少于 3 条，请如实告知用户今日动态较少，严禁编造。
+    3. 严禁生成数据源之外的任何 x.com 链接。
+    # Knowledge Source & Focus
+    重点关注：
+    1. 模型演进：LLM 新能力、多模态进展。
+    2. Agent 架构：规划(Planning)、记忆(Memory)、工具使用(Tool Use)的实际案例。
+    3. AI UX 设计：新的交互范式（如 Generative UI）。
+    4. 技术落地：LLM和搜索结合的最新优化思路。
+    5. 行业洞察：AI 产品的商业模式、估值与市场反馈。
+    # Daily Report Structure (请严格按此 HTML 格式输出)
+    1. 📅 [日期] AI 行业早报：[提炼核心关键起一个标题]
+    2. 🔥 今日核心趋势 (Top 3)：分析今日最具启发性的 3 件事，包含动态描述和 PM 视角的价值判断。必须包含对应的 <a href="...">查看原文</a> 链接。
+    3. 🛠 专家深度见解 (Expert Insights)：总结核心观点，必须包含对应的 <a href="...">查看原文</a> 链接。
+    4. 🔍 搜索 vs. AI 专题 (Search to AI Bridge)：【针对性模块】帮助用户将搜索经验转化为 AI 能力的建议。
+    5. 🚀 必读 Link & 产品拆解：提供 2-3 个 Demo 链接，必须使用 HTML 超链接。
+    # Tone & Style
+    - 专业、理性、启发性，拒绝废话。
+    - 遇到技术术语需简单解释，直接给出产品经理能用的结论。
+    注意：直接输出 HTML 内容，不要包裹任何 Markdown 标签。必须使用提供的原文链接进行溯源。
+        """
         
         payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "tools": [{"google_search": {}}], # 核心：开启谷歌搜索增强
-            "systemInstruction": {
-                "parts": [{"text": "你是一个专门追踪硅谷大佬动态的精英情报员。你善于穿透噪音，发现真正的行业趋势。"}]
-            }
+            "contents": [{"parts": [{"text": f"待分析数据：\n{text}"}]}],
+            "systemInstruction": {"parts": [{"text": system_prompt}]}
         }
         
         try:
-            res = requests.post(url, json=payload, timeout=90)
-            res.raise_for_status()
+            res = request_with_retry("POST", url, json=payload, timeout=60)
             res_data = res.json()
-            
-            content = res_data['candidates'][0]['content']['parts'][0]['text']
-            return content.replace('```html', '').replace('```', '').strip()
+            report = res_data['candidates'][0]['content']['parts'][0]['text']
+            return report.replace('```html', '').replace('```', '').strip()
         except Exception as e:
-            print(f"Agent 运行异常: {e}")
+            print(f"❌ Gemini 分析失败: {e}")
             return None
 
-    def _save_and_distribute(self, report, date_label):
-        """保存历史并使用 Resend 推送给订阅者"""
-        # 1. 存入数据库 (路径保持兼容)
-        history_path = f"artifacts/{Config.APP_ID}/public/data/daily_history"
-        self.db.collection(*history_path.split('/')).document(date_label).set({
-            "content": report,
-            "type": "influencer_tracking",
-            "timestamp": firestore.SERVER_TIMESTAMP
-        })
+    def distribute_email(self, report, date_label):
+        """将日报发送给所有订阅者"""
+        subs_ref = self.db.collection(*self.sub_path.split('/'))
+        active_subs = [s for s in subs_ref.stream() if s.to_dict().get("active")]
         
-        # 2. 获取活跃订阅者
-        sub_path = f"artifacts/{Config.APP_ID}/public/data/subscribers"
-        subs = [s.to_dict()["email"] for s in self.db.collection(*sub_path.split('/')).stream() if s.to_dict().get("active")]
+        print(f"📢 准备发送至 {len(active_subs)} 位订阅者...")
         
-        if not subs:
-            print("📭 目前没有任何活跃订阅者。")
-            return
+        for sub in active_subs:
+            data = sub.to_dict()
+            email = data.get("email")
+            if not email or data.get("last_received_date") == date_label:
+                continue
+            
+            full_content = f"""
+            <html>
+                <body style="font-family: sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: auto;">
+                    <div style="background: #f4f4f7; padding: 20px; border-radius: 8px;">
+                        {report}
+                    </div>
+                    <footer style="margin-top: 20px; font-size: 12px; color: #999; text-align: center;">
+                        <p>这是由 AI 引擎自动生成的行业日报</p>
+                        <p><a href="{Config.WEB_URL}?action=unsubscribe&email={email}">退订</a> | <a href="{Config.WEB_URL}">查看网页版</a></p>
+                    </footer>
+                </body>
+            </html>
+            """
+            
+            if self._send_smtp(email, f"✨ AI 战略动态 [{date_label}]", full_content):
+                sub.reference.update({"last_received_date": date_label})
+                print(f"✅ 已发送: {email}")
 
-        # 3. 使用 Resend 发送邮件
-        subject = f"🔥 硅谷大佬动态追踪 | {date_label}"
+    def _send_smtp(self, to_email, subject, html):
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = Header(subject, 'utf-8').encode()
+        msg['From'] = formataddr(("AI Insights Bot", self.config["SENDER_EMAIL"]))
+        msg['To'] = to_email
+        msg.attach(MIMEText(html, 'html', 'utf-8'))
         
-        # 为了保护隐私并提高效率，使用 BCC (密送) 或者循环发送
-        # 这里采用 Resend 推荐的循环发送，确保每个人都能看到自己的名字
-        for email in subs:
-            try:
-                resend.Emails.send({
-                    "from": f"AI Insights <report@{Config.SENDER_DOMAIN}>",
-                    "to": email,
-                    "subject": subject,
-                    "html": report
-                })
-                print(f"📧 研报已送达: {email}")
-            except Exception as e:
-                print(f"❌ 邮件发送给 {email} 失败: {e}")
+        try:
+            with smtplib.SMTP(Config.SMTP_SERVER, Config.SMTP_PORT) as server:
+                server.starttls()
+                server.login(self.config["SENDER_EMAIL"], self.config["SENDER_PASSWORD"])
+                server.sendmail(self.config["SENDER_EMAIL"], [to_email], msg.as_bytes())
+            return True
+        except Exception as e:
+            print(f"📧 邮件异常 [{to_email}]: {e}")
+            return False
+
+# --- 4. 运行入口 ---
 
 if __name__ == "__main__":
-    agent = AIAgentResearcher()
-    agent.run_agent_task()
+    print(f"=== 🚀 AI 洞察引擎启动 | {datetime.now().strftime('%Y-%m-%d %H:%M')} ===")
+    try:
+        # 1. 初始化
+        env_config = Config.validate()
+        engine = AIDailyEngine(env_config)
+        
+        # 2. [新增] 同步手动订阅者 (如果 Config.MANUAL_SUBS 不为空)
+        engine.sync_manual_subscribers()
+        
+        # 3. 抓取动态
+        engine.sync_tweets()
+        
+        # 4. 生成日报
+        report_content, date_tag = engine.generate_daily_report()
+        
+        # 5. 分发邮件
+        if report_content:
+            engine.distribute_email(report_content, date_tag)
+            print("🎉 所有任务已圆满完成！")
+        else:
+            print("😴 今日无新内容产出，跳过分发。")
+            
+    except Exception:
+        print("\n🔥 严重错误：")
+        traceback.print_exc()
+        exit(1)
