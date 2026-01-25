@@ -2,8 +2,8 @@ name: AI Daily Report Automation
 
 on:
   schedule:
-    # 关键：每 5 分钟自动醒来一次，检查验证码和新用户
-    - cron: '*/5 * * * *'
+    # 关键：每 1小时自动醒来一次，检查验证码和新用户
+    - cron: '0 * * * *'
   workflow_dispatch: # 允许在 GitHub 后台手动点按钮运行
 
 jobs:
