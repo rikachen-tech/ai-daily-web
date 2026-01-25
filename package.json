@@ -1,0 +1,9 @@
+{
+"name": "ai-daily-web",
+"version": "1.0.0",
+"main": "index.js",
+"dependencies": {
+"resend": "^3.0.0",
+"firebase-admin": "^12.0.0"
+}
+}
