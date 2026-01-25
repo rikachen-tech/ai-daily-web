@@ -3,212 +3,234 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>X-AI Insights - 订阅中心</title>
-    <!-- 引入样式和库 -->
+    <title>AI Insights - 硅谷资讯订阅</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- 引入 Firebase 兼容版 SDK -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: black; }
-        .glass-card { background: rgba(24, 24, 27, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(39, 39, 42, 1); }
-    </style>
-</head>
-<body class="text-white">
-    <div id="root"></div>
-
-    <script type="text/babel">
-        // --- 1. 填入您的专属 Firebase 配置 ---
-        const firebaseConfig = {
-            apiKey: "AIzaSyCRi5GAPSMicNMEyiEFibOMRZu8ldpa4i8",
-            authDomain: "my-ai-daily.firebaseapp.com",
-            projectId: "my-ai-daily",
-            storageBucket: "my-ai-daily.firebasestorage.app",
-            messagingSenderId: "818838941572",
-            appId: "1:818838941572:web:a2b3b807b72798f562f7d1",
-            measurementId: "G-NT88GKS05E"
-        };
-
-        // 初始化
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-        const auth = firebase.auth();
-        const appId = "ai-daily-app";
-
-        const { useState, useEffect } = React;
-
-        // 图标组件
-        const Icon = ({ name, size = 20, className = "" }) => {
-            useEffect(() => {
-                if (window.lucide) window.lucide.createIcons();
-            }, [name]);
-            return <i data-lucide={name} style={{width: size, height: size}} className={className}></i>;
-        };
-
-        function App() {
-            const [email, setEmail] = useState('');
-            const [otp, setOtp] = useState('');
-            const [view, setView] = useState('subscribe'); 
-            const [status, setStatus] = useState('idle'); 
-            const [message, setMessage] = useState('');
-            const [errorCode, setErrorCode] = useState('');
-
-            useEffect(() => {
-                auth.signInAnonymously().catch(err => setErrorCode(err.code));
-            }, []);
-
-            const handleSendCode = async (e) => {
-                e.preventDefault();
-                if (!email || !email.includes('@')) {
-                    setStatus('error');
-                    setMessage('请输入有效的邮箱地址');
-                    return;
-                }
-                setStatus('loading');
-                try {
-                    const code = Math.floor(100000 + Math.random() * 900000).toString();
-                    // 写入验证请求
-                    await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('verification_requests').add({
-                        email: email.trim().toLowerCase(),
-                        code: code,
-                        status: 'pending',
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                    });
-                    
-                    localStorage.setItem('temp_otp', code);
-                    localStorage.setItem('temp_email', email.trim().toLowerCase());
-                    setView('verify');
-                    setStatus('idle');
-                    setMessage('验证码请求已提交！请检查邮箱。');
-                } catch (err) {
-                    console.error(err);
-                    setStatus('error');
-                    setErrorCode(err.code);
-                    setMessage('连接失败，请确保 Firebase Rules 已正确发布。');
-                }
-            };
-
-            const handleVerify = async (e) => {
-                e.preventDefault();
-                const savedCode = localStorage.getItem('temp_otp');
-                const savedEmail = localStorage.getItem('temp_email');
-                if (otp !== savedCode) {
-                    setStatus('error');
-                    setMessage('验证码不正确');
-                    return;
-                }
-                setStatus('loading');
-                try {
-                    const subsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('subscribers');
-                    const snapshot = await subsRef.where('email', '==', savedEmail).get();
-                    if (snapshot.empty) {
-                        await subsRef.add({ 
-                            email: savedEmail, 
-                            active: true, 
-                            subscribedAt: firebase.firestore.FieldValue.serverTimestamp() 
-                        });
-                    } else {
-                        await snapshot.docs[0].ref.update({ active: true });
-                    }
-                    setStatus('success');
-                    setMessage('验证成功！您已正式加入订阅。');
-                    setView('subscribe');
-                    setEmail('');
-                    setOtp('');
-                } catch (err) {
-                    setStatus('error');
-                    setErrorCode(err.code);
-                    setMessage('保存失败，请检查数据库权限。');
-                }
-            };
-
-            return (
-                <div className="min-h-screen flex flex-col items-center justify-center p-6">
-                    {/* Logo 区域 */}
-                    <div className="absolute top-10 flex items-center space-x-2 text-blue-400">
-                        <Icon name="twitter" size={32} className="fill-current" />
-                        <span className="text-xl font-black tracking-tighter italic">X-AI INSIGHTS</span>
-                    </div>
-
-                    {/* 主卡片 */}
-                    <main className="w-full max-w-md glass-card p-8 rounded-[2.5rem] shadow-2xl">
-                        {view === 'subscribe' ? (
-                            <div className="text-center">
-                                <div className="flex items-center justify-center space-x-2 mb-4 text-yellow-500">
-                                    <Icon name="sparkles" size={16} />
-                                    <span className="text-[10px] font-black uppercase tracking-[0.3em]">AI Intelligence</span>
-                                </div>
-                                <h1 className="text-3xl font-black mb-3 text-white leading-tight">掌握 AI 进化脉络</h1>
-                                <p className="text-zinc-500 mb-8 text-sm leading-relaxed px-4 text-center">
-                                    聚合全球 AI 领袖动态。由 PM 视角深度拆解商业逻辑。每日 09:00 送达。
-                                </p>
-                                
-                                <form onSubmit={handleSendCode} className="space-y-4">
-                                    <div className="relative group">
-                                        <Icon name="mail" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-blue-500 transition-colors" />
-                                        <input
-                                            type="email"
-                                            placeholder="输入邮箱开启推送"
-                                            value={email}
-                                            onChange={(e) => setEmail(e.target.value)}
-                                            className="w-full bg-black border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 outline-none focus:border-blue-500 text-white placeholder:text-zinc-700 transition-all"
-                                        />
-                                    </div>
-                                    <button type="submit" className="w-full bg-white text-black font-black py-4 rounded-2xl hover:bg-blue-400 hover:text-white transition-all transform active:scale-95">
-                                        {status === 'loading' ? '正在连接...' : '获取验证码'}
-                                    </button>
-                                </form>
-                            </div>
-                        ) : (
-                            <div className="text-center">
-                                <div className="w-12 h-12 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                                    <Icon name="key" size={24} className="text-blue-500" />
-                                </div>
-                                <h1 className="text-2xl font-black mb-2 text-white text-center">确认验证码</h1>
-                                <p className="text-zinc-500 mb-8 text-xs text-center">验证码已发送至 <b>{email}</b></p>
-                                <form onSubmit={handleVerify} className="space-y-4">
-                                    <input
-                                        type="text"
-                                        placeholder="000000"
-                                        maxLength="6"
-                                        value={otp}
-                                        onChange={(e) => setOtp(e.target.value)}
-                                        className="w-full bg-black border border-zinc-800 rounded-2xl py-5 text-center text-3xl tracking-[0.6em] font-mono outline-none focus:border-blue-500 text-white"
-                                    />
-                                    <button type="submit" className="w-full bg-blue-600 text-white font-black py-4 rounded-2xl hover:bg-blue-500 transition-all">
-                                        确认激活订阅
-                                    </button>
-                                    <button type="button" onClick={() => setView('subscribe')} className="text-zinc-600 text-xs hover:text-zinc-400 transition-colors">返回修改邮箱</button>
-                                </form>
-                            </div>
-                        )}
-
-                        {/* 消息提示 */}
-                        {message && (
-                            <div className={`mt-8 p-4 rounded-2xl text-[11px] font-medium flex items-start space-x-2 border animate-in fade-in slide-in-from-bottom-2 ${
-                                status === 'success' ? 'bg-green-500/5 border-green-500/20 text-green-400' : 'bg-red-500/5 border-red-500/20 text-red-400'
-                            }`}>
-                                <Icon name={status === 'success' ? 'check-circle' : 'alert-circle'} size={14} className="mt-0.5 shrink-0" />
-                                <span>{message} {errorCode && `[Error: ${errorCode}]`}</span>
-                            </div>
-                        )}
-                    </main>
-
-                    <p className="mt-10 text-[10px] text-zinc-600 uppercase tracking-widest font-bold opacity-40">
-                        Stay ahead of the curve with X-AI
-                    </p>
-                </div>
-            );
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        
+        body { 
+            background-color: #050505; 
+            color: #ffffff; 
+            font-family: 'Inter', -apple-system, sans-serif;
+            margin: 0;
+            overflow-x: hidden;
         }
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        .glass-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(20px);
+        }
+
+        .influencer-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .influencer-card:hover {
+            background: rgba(255, 255, 255, 0.07);
+            transform: translateY(-8px);
+            border-color: rgba(29, 161, 242, 0.3);
+        }
+
+        /* 极简按钮 */
+        .btn-primary {
+            background: #ffffff;
+            color: #000000;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary:hover {
+            background: #f0f0f0;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 20px rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        /* 背景微光 */
+        .glow {
+            position: absolute;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(29, 161, 242, 0.08) 0%, rgba(0,0,0,0) 70%);
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        /* 头像容器 */
+        .avatar-container {
+            position: relative;
+            width: 56px;
+            height: 56px;
+            margin: 0 auto 12px;
+        }
+
+        .avatar-img {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            background-color: #111;
+        }
+
+        .x-badge {
+            position: absolute;
+            bottom: -2px;
+            right: -2px;
+            background: #000;
+            color: #fff;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            font-size: 8px;
+            display: flex;
+            items-center: center;
+            justify-content: center;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen px-6 py-12">
+    <!-- 背景装饰 -->
+    <div class="glow top-[-100px] right-[-100px]"></div>
+    <div class="glow bottom-[-100px] left-[-100px]"></div>
+
+    <div class="max-w-3xl w-full text-center">
+        <!-- 品牌标识 -->
+        <div class="mb-8 flex justify-center">
+            <div class="p-3 glass-card rounded-2xl">
+                <i class="fab fa-x-twitter text-2xl text-white"></i>
+            </div>
+        </div>
+
+        <h1 class="text-4xl md:text-6xl font-bold tracking-tight mb-6 bg-clip-text text-transparent bg-gradient-to-b from-white to-gray-400">
+            AI Insights Daily
+        </h1>
+        
+        <p class="text-gray-400 text-lg md:text-xl mb-12 font-light max-w-xl mx-auto leading-relaxed">
+            “订阅之后可以获得产品经理视角的资讯日报”
+        </p>
+
+        <!-- 硅谷大佬展示区 -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-16">
+            <!-- Sam Altman -->
+            <div class="influencer-card glass-card p-5 rounded-2xl">
+                <div class="avatar-container">
+                    <img src="https://unavatar.io/twitter/sama" class="avatar-img" alt="Sam Altman" onerror="this.src='https://api.dicebear.com/7.x/initials/svg?seed=SA'" />
+                    <div class="x-badge"><i class="fab fa-x-twitter"></i></div>
+                </div>
+                <h3 class="text-sm font-semibold text-white">Sam Altman</h3>
+                <p class="text-[10px] text-gray-500 mt-1">CEO, OpenAI</p>
+            </div>
+
+            <!-- Andrej Karpathy -->
+            <div class="influencer-card glass-card p-5 rounded-2xl">
+                <div class="avatar-container">
+                    <img src="https://unavatar.io/twitter/karpathy" class="avatar-img" alt="Andrej Karpathy" onerror="this.src='https://api.dicebear.com/7.x/initials/svg?seed=AK'" />
+                    <div class="x-badge"><i class="fab fa-x-twitter"></i></div>
+                </div>
+                <h3 class="text-sm font-semibold text-white">Karpathy</h3>
+                <p class="text-[10px] text-gray-500 mt-1">Founding Member</p>
+            </div>
+
+            <!-- Demis Hassabis -->
+            <div class="influencer-card glass-card p-5 rounded-2xl">
+                <div class="avatar-container">
+                    <img src="https://unavatar.io/twitter/demishassabis" class="avatar-img" alt="Demis Hassabis" onerror="this.src='https://api.dicebear.com/7.x/initials/svg?seed=DH'" />
+                    <div class="x-badge"><i class="fab fa-x-twitter"></i></div>
+                </div>
+                <h3 class="text-sm font-semibold text-white">D. Hassabis</h3>
+                <p class="text-[10px] text-gray-500 mt-1">CEO, DeepMind</p>
+            </div>
+
+            <!-- Yann LeCun -->
+            <div class="influencer-card glass-card p-5 rounded-2xl">
+                <div class="avatar-container">
+                    <img src="https://unavatar.io/twitter/ylecun" class="avatar-img" alt="Yann LeCun" onerror="this.src='https://api.dicebear.com/7.x/initials/svg?seed=YL'" />
+                    <div class="x-badge"><i class="fab fa-x-twitter"></i></div>
+                </div>
+                <h3 class="text-sm font-semibold text-white">Yann LeCun</h3>
+                <p class="text-[10px] text-gray-500 mt-1">Chief Scientist, Meta</p>
+            </div>
+        </div>
+
+        <!-- 订阅区域 -->
+        <div class="max-w-md mx-auto">
+            <div class="glass-card p-1.5 rounded-2xl flex flex-col sm:flex-row gap-2">
+                <input type="email" id="email-input" placeholder="输入邮箱地址..." 
+                       class="bg-transparent text-white px-6 py-4 rounded-xl flex-1 outline-none text-sm placeholder:text-gray-600">
+                <button id="send-btn" class="btn-primary px-8 py-4 rounded-xl font-bold text-sm whitespace-nowrap">
+                    免费开启订阅
+                </button>
+            </div>
+            
+            <!-- 状态反馈 -->
+            <div id="msg-box" class="hidden mt-6 p-4 rounded-xl text-sm border animate-pulse"></div>
+        </div>
+
+        <div class="mt-16 flex items-center justify-center gap-6 text-gray-600 text-[10px] uppercase tracking-widest font-medium">
+            <span>Silicon Valley Direct</span>
+            <div class="w-1 h-1 bg-gray-800 rounded-full"></div>
+            <span>PM Perspective</span>
+            <div class="w-1 h-1 bg-gray-800 rounded-full"></div>
+            <span>Daily Updates</span>
+        </div>
+    </div>
+
+    <script>
+        const sendBtn = document.getElementById('send-btn');
+        const emailInput = document.getElementById('email-input');
+        const msgBox = document.getElementById('msg-box');
+
+        sendBtn.addEventListener('click', async () => {
+            const email = emailInput.value.trim();
+            if (!email) {
+                showMsg('请输入邮箱地址以接收日报', 'error');
+                return;
+            }
+
+            sendBtn.innerText = '正在校验域名...';
+            sendBtn.disabled = true;
+            msgBox.classList.add('hidden');
+
+            try {
+                // 执行 Vercel 后端发信逻辑
+                const response = await fetch('/api/send-code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    showMsg('✨ 验证码已发送至您的邮箱，请查收！', 'success');
+                } else {
+                    showMsg('⚠️ 发送失败: ' + (result.error || 'API 限制'), 'error');
+                }
+            } catch (err) {
+                console.error(err);
+                showMsg('网络异常，请确保 Vercel 环境变量已配置', 'error');
+            } finally {
+                sendBtn.innerText = '免费开启订阅';
+                sendBtn.disabled = false;
+            }
+        });
+
+        function showMsg(text, type) {
+            msgBox.innerText = text;
+            msgBox.classList.remove('hidden', 'bg-green-500/10', 'border-green-500/20', 'text-green-400', 'bg-red-500/10', 'border-red-500/20', 'text-red-400');
+            
+            if (type === 'success') {
+                msgBox.classList.add('bg-green-500/10', 'border-green-500/20', 'text-green-400');
+            } else {
+                msgBox.classList.add('bg-red-500/10', 'border-red-500/20', 'text-red-400');
+            }
+        }
     </script>
 </body>
 </html>
