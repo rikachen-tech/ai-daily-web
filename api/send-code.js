@@ -10,7 +10,6 @@ import { getFirestore } from 'firebase-admin/firestore';
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // 2. 初始化 Firebase Admin (存取验证码)
-// 确保环境变量 FIREBASE_CONFIG_JSON 是完整的 JSON 字符串
 const firebaseConfig = JSON.parse(process.env.FIREBASE_CONFIG_JSON);
 if (!getApps().length) {
   initializeApp({
@@ -20,7 +19,6 @@ if (!getApps().length) {
 const db = getFirestore();
 
 export default async function handler(req, res) {
-  // 安全检查：只允许 POST 请求
   if (req.method !== 'POST') {
     return res.status(405).json({ error: '仅支持 POST 请求' });
   }
@@ -34,20 +32,20 @@ export default async function handler(req, res) {
     // A. 生成 6 位随机验证码
     const code = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // B. 将验证码存入 Firestore (设置 5 分钟有效期)
-    // 路径遵循规范: /artifacts/ai-daily-app/public/data/verification_codes/{email}
+    // B. 将验证码存入 Firestore (5 分钟有效期)
     const appId = "ai-daily-app";
     const codePath = `artifacts/${appId}/public/data/verification_codes`;
     
     await db.collection(codePath).doc(email).set({
       code,
-      expiresAt: Date.now() + 5 * 60 * 1000, // 5分钟后过期
+      expiresAt: Date.now() + 5 * 60 * 1000,
       createdAt: new Date().toISOString()
     });
 
     // C. 调用 Resend API 发送邮件
     const { data, error } = await resend.emails.send({
-      from: 'AI Daily <auth@your-verified-domain.com>', // 这里要换成你在 Resend 验证过的域名
+      // ✅ 使用你验证成功的域名
+      from: 'AI Daily <auth@insightdata.space>', 
       to: [email],
       subject: '您的登录验证码',
       html: `
@@ -63,13 +61,11 @@ export default async function handler(req, res) {
     });
 
     if (error) {
-      console.error('Resend 发送失败:', error);
       return res.status(400).json({ error });
     }
 
     return res.status(200).json({ success: true, message: '验证码已发送' });
   } catch (err) {
-    console.error('服务器内部错误:', err);
     return res.status(500).json({ error: '发送失败，请稍后再试' });
   }
 }
