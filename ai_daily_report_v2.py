@@ -1,4 +1,3 @@
-
 import os
 import json
 import requests
@@ -23,11 +22,12 @@ class Config:
     
     # 推荐使用的模型版本
     GEMINI_MODEL = "gemini-2.5-flash-preview-09-2025"
-    # [新增] 手动订阅者列表：如果你有飞书表格，直接把邮箱复制到这里
-    # 运行脚本时，这些邮箱会自动同步到 Firestore 且无需验证
+    
+    # 手动订阅者列表
     MANUAL_SUBS = [
-         ""
+        # "example@gmail.com"
     ]
+
     @staticmethod
     def validate():
         required_keys = [
@@ -41,21 +41,20 @@ class Config:
             raise ValueError(f"GitHub Secrets 缺失项: {', '.join(missing)}")
         return config
 
-# 大佬名单 (建议后续移至 Firestore 动态管理)
+# 大佬名单
 AI_INFLUENCERS = [
     "OpenAI", "sama", "AnthropicAI", "DeepMind", "demishassabis", "MetaAI", "ylecun", 
     "karpathy", "AravSrinivas", "mustafasuleyman", "gdb", "therundownai", "rowancheung",
     "pete_huang", "tldr", "bentossell", "alliekmiller", "DrJimFan", "llama_index"
 ]
 
-# --- 2. 工具函数 (带重试逻辑) ---
+# --- 2. 工具函数 ---
 def request_with_retry(method, url, max_retries=3, **kwargs):
     for i in range(max_retries):
         try:
             response = requests.request(method, url, **kwargs)
-            # 特殊处理额度耗尽错误
             if response.status_code == 429:
-                print("🚨 警告：RapidAPI 额度已耗尽 (429)！请调低运行频率。")
+                print("🚨 警告：RapidAPI 额度已耗尽 (429)！")
                 return response
             response.raise_for_status()
             return response
@@ -63,8 +62,8 @@ def request_with_retry(method, url, max_retries=3, **kwargs):
             if i == max_retries - 1: raise e
             time.sleep(2 ** i)
     return None
-# --- 3. 核心引擎类 ---
 
+# --- 3. 核心引擎类 ---
 class AIDailyEngine:
     def __init__(self, config_dict):
         self.config = config_dict
@@ -82,7 +81,7 @@ class AIDailyEngine:
         return firestore.client()
 
     def sync_manual_subscribers(self):
-        """[新增] 将代码中手动定义的邮箱同步到数据库"""
+        """将代码中手动定义的邮箱同步到数据库"""
         if not Config.MANUAL_SUBS:
             return
             
@@ -90,8 +89,8 @@ class AIDailyEngine:
         subs_ref = self.db.collection(*self.sub_path.split('/'))
         
         for email in Config.MANUAL_SUBS:
+            if not email: continue
             email = email.strip().lower()
-            # 使用邮箱作为文档 ID 避免重复
             doc_ref = subs_ref.document(email)
             if not doc_ref.get().exists:
                 doc_ref.set({
@@ -125,13 +124,12 @@ class AIDailyEngine:
                     timeout=20
                 )
                 
-                # 打印当前额度状态（从响应头提取）
                 remaining = res.headers.get('x-ratelimit-requests-remaining')
                 if index == 0 and remaining:
                     print(f"📊 提示：当前 API 剩余可用额度约: {remaining}")
 
                 if res.status_code != 200: 
-                    if res.status_code == 429: break # 额度没了直接退出循环
+                    if res.status_code == 429: break 
                     continue
                 
                 timeline = res.json().get('timeline', [])
@@ -160,7 +158,7 @@ class AIDailyEngine:
         
         print(f"✅ 资源池更新完成，新增 {new_count} 条。")
 
-def generate_daily_report(self):
+    def generate_daily_report(self):
         bj_now = datetime.now(timezone(timedelta(hours=8)))
         today_str = bj_now.strftime('%Y-%m-%d')
         
@@ -172,14 +170,12 @@ def generate_daily_report(self):
 
         pool_ref = self.db.collection(*self.pool_path.split('/'))
         docs = list(pool_ref.stream())
-        # 过滤出未使用的
         unused_docs = [d for d in docs if not d.to_dict().get("used_in_report")]
         
         if not unused_docs:
             print("📭 无新素材可供分析。")
             return None, today_str
 
-        # 按时间排序取前 50
         sorted_docs = sorted(unused_docs, key=lambda x: x.to_dict().get('created_at', datetime(1970,1,1,tzinfo=timezone.utc)), reverse=True)[:50]
         
         input_data = ""
@@ -207,14 +203,14 @@ def generate_daily_report(self):
             
         return None, today_str
 
-
     def _call_gemini_api(self, text):
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{Config.GEMINI_MODEL}:generateContent?key={self.config['GEMINI_API_KEY']}"
         
+        # 恢复了你的完整版 System Prompt
         system_prompt = f"""
     # Role
     你是一位顶级的 AI 行业分析师和资深 AI 产品经理导师。你的任务是根据提供的推文资源池（包含过去 7 天未曾分析的全球最前沿的 AI 开发者、产品经理及研究员的动态）并为一位“正从传统策略产品经理转型 AI 产品经理”的用户生成每日深度日报。
-   # rules
+    # rules
     1. 只能使用 [数据源] 里的真实信息。
     2. 如果数据源里的推文少于 3 条，请如实告知用户今日动态较少，严禁编造。
     3. 严禁生成数据源之外的任何 x.com 链接。
@@ -246,13 +242,13 @@ def generate_daily_report(self):
             res = request_with_retry("POST", url, json=payload, timeout=60)
             res_data = res.json()
             report = res_data['candidates'][0]['content']['parts'][0]['text']
+            # 清理可能的 markdown 包裹
             return report.replace('```html', '').replace('```', '').strip()
         except Exception as e:
             print(f"❌ Gemini 分析失败: {e}")
             return None
 
     def distribute_email(self, report, date_label):
-        """将日报发送给所有订阅者"""
         subs_ref = self.db.collection(*self.sub_path.split('/'))
         active_subs = [s for s in subs_ref.stream() if s.to_dict().get("active")]
         
@@ -300,24 +296,17 @@ def generate_daily_report(self):
             return False
 
 # --- 4. 运行入口 ---
-
 if __name__ == "__main__":
     print(f"=== 🚀 AI 洞察引擎启动 | {datetime.now().strftime('%Y-%m-%d %H:%M')} ===")
     try:
-        # 1. 初始化
         env_config = Config.validate()
         engine = AIDailyEngine(env_config)
         
-        # 2. [新增] 同步手动订阅者 (如果 Config.MANUAL_SUBS 不为空)
         engine.sync_manual_subscribers()
-        
-        # 3. 抓取动态
         engine.sync_tweets()
         
-        # 4. 生成日报
         report_content, date_tag = engine.generate_daily_report()
         
-        # 5. 分发邮件
         if report_content:
             engine.distribute_email(report_content, date_tag)
             print("🎉 所有任务已圆满完成！")
