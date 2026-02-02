@@ -35,6 +35,12 @@
             box-shadow: 0 4px 20px rgba(255, 255, 255, 0.1);
         }
 
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
         .glow {
             position: absolute;
             width: 600px;
@@ -44,6 +50,7 @@
             pointer-events: none;
         }
 
+        /* Marquee Animation */
         .marquee-container {
             mask-image: linear-gradient(to right, transparent, black 15%, black 85%, transparent);
             -webkit-mask-image: linear-gradient(to right, transparent, black 15%, black 85%, transparent);
@@ -87,7 +94,7 @@
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        /* 验证码框特定样式 */
+        /* OTP Input Styling */
         .otp-input {
             width: 3rem;
             height: 4rem;
@@ -119,11 +126,12 @@
     </style>
 </head>
 <body class="flex flex-col items-center justify-center min-h-screen px-4 py-12 md:px-6">
+    <!-- Background Decor -->
     <div class="glow top-[-100px] right-[-100px]"></div>
     <div class="glow bottom-[-100px] left-[-100px]"></div>
 
     <div class="max-w-4xl w-full text-center">
-        <!-- 品牌标识 -->
+        <!-- Logo -->
         <div class="mb-8 flex justify-center">
             <div class="p-3 glass-card rounded-2xl">
                 <i class="fab fa-x-twitter text-2xl text-white"></i>
@@ -138,7 +146,7 @@
             “订阅来自 Silicon Valley 顶尖大脑的每日思考”
         </p>
 
-        <!-- 无限滚动大佬展示区 -->
+        <!-- Influencer Marquee -->
         <div class="marquee-container overflow-hidden mb-16 space-y-4">
             <div class="flex gap-4 animate-scroll-left w-max">
                 <div class="flex gap-4" id="marquee-row-1"></div>
@@ -150,8 +158,9 @@
             </div>
         </div>
 
-        <!-- 订阅区域 -->
+        <!-- Subscription Area -->
         <div class="max-w-md mx-auto relative min-h-[140px]">
+            <!-- Step 1: Email Input -->
             <div id="step-1" class="glass-card p-1.5 rounded-2xl flex flex-col sm:flex-row gap-2 transition-all duration-300">
                 <input type="email" id="email-input" placeholder="输入邮箱地址..." 
                        class="bg-transparent text-white px-6 py-4 rounded-xl flex-1 outline-none text-sm placeholder:text-gray-600">
@@ -160,12 +169,12 @@
                 </button>
             </div>
 
-            <!-- 步骤 2: 修复后的验证码输入 -->
+            <!-- Step 2: OTP Verification -->
             <div id="step-2" class="hidden glass-card p-6 rounded-2xl fade-in">
                 <p class="text-xs text-gray-400 mb-6 text-center">验证码已发送至 <span id="target-email" class="text-white font-medium"></span></p>
                 
                 <div class="flex flex-col gap-6">
-                    <!-- 6个独立输入框 -->
+                    <!-- 6 Independent OTP Fields -->
                     <div class="flex justify-between gap-2" id="otp-container">
                         <input type="text" maxlength="1" class="otp-input" inputmode="numeric" autocomplete="one-time-code">
                         <input type="text" maxlength="1" class="otp-input" inputmode="numeric">
@@ -185,6 +194,7 @@
                 </div>
             </div>
             
+            <!-- Message Box -->
             <div id="msg-box" class="hidden mt-6 p-4 rounded-xl text-sm border"></div>
         </div>
 
@@ -198,7 +208,7 @@
     </div>
 
     <script>
-        // 大佬名单配置
+        // Influencer Data
         const influencers = [
             { name: "Sam Altman", handle: "sama" },
             { name: "Andrej Karpathy", handle: "karpathy" },
@@ -209,30 +219,9 @@
             { name: "Greg Brockman", handle: "gdb" },
             { name: "Aravind Srinivas", handle: "AravSrinivas" },
             { name: "Mustafa Suleyman", handle: "mustafasuleyman" },
-            { name: "The Rundown AI", handle: "therundownai" },
-            { name: "Rowan Cheung", handle: "rowancheung" },
-            { name: "Pete Huang", handle: "pete_huang" },
-            { name: "TLDR", handle: "tldr" },
-            { name: "Ben's Bites", handle: "bentossell" },
-            { name: "Allie K. Miller", handle: "alliekmiller" },
             { name: "Jim Fan", handle: "DrJimFan" },
-            { name: "LlamaIndex", handle: "llama_index" },
-            { name: "Swyx", handle: "Swyx" },
-            { name: "Greg Isenberg", handle: "gregisenberg" },
-            { name: "Lenny Rachitsky", handle: "lennysan" },
-            { name: "Josh Woodward", handle: "joshuwoodward" },
-            { name: "Kevin Weil", handle: "kevinweil" },
-            { name: "Peter Yang", handle: "petergyang" },
-            { name: "Nan Yu", handle: "nanyu" },
-            { name: "Mckay Wrigley", handle: "mckaywrigley" },
-            { name: "Google Labs", handle: "googlelabs" },
             { name: "Amjad Masad", handle: "amjad" },
-            { name: "Guillermo Rauch", handle: "rauchg" },
-            { name: "Riley Brown", handle: "rileybrownai" },
-            { name: "Aaron Levie", handle: "levie" },
-            { name: "Garry Tan", handle: "garrytan" },
-            { name: "Julie Zhuo", handle: "joulee" },
-            { name: "Matt Turck", handle: "mattturck" }
+            { name: "Garry Tan", handle: "garrytan" }
         ];
 
         function populateMarquee() {
@@ -257,7 +246,7 @@
 
         populateMarquee();
 
-        // 订阅逻辑
+        // --- Logic Integration ---
         const step1 = document.getElementById('step-1');
         const step2 = document.getElementById('step-2');
         const sendBtn = document.getElementById('send-btn');
@@ -267,41 +256,61 @@
         const msgBox = document.getElementById('msg-box');
         const otpInputs = document.querySelectorAll('.otp-input');
 
-        // 发送验证码
-        sendBtn.addEventListener('click', () => {
+        // 发送验证码 (Real Fetch)
+        sendBtn.addEventListener('click', async () => {
             const email = emailInput.value.trim();
-            if (!email) {
-                showMsg('请输入有效邮箱', 'error');
+            if (!email || !email.includes('@')) {
+                showMsg('请输入有效邮箱地址', 'error');
                 return;
             }
+
             sendBtn.innerText = '正在发送...';
-            setTimeout(() => {
-                document.getElementById('target-email').innerText = email;
-                step1.classList.add('hidden');
-                step2.classList.remove('hidden');
-                showMsg('✨ 验证码已发送至您的邮箱', 'success');
-                // 聚焦第一个框
-                otpInputs[0].focus();
-            }, 1000);
+            sendBtn.disabled = true;
+            msgBox.classList.add('hidden');
+
+            try {
+                const response = await fetch('/api/send-code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    document.getElementById('target-email').innerText = email;
+                    step1.classList.add('hidden');
+                    step2.classList.remove('hidden');
+                    showMsg('✨ 验证码已发送至您的邮箱', 'success');
+                    otpInputs[0].focus();
+                } else {
+                    showMsg('⚠️ 发送失败: ' + (result.error || '请求受限'), 'error');
+                }
+            } catch (err) {
+                console.error(err);
+                showMsg('网络连接异常，请稍后再试', 'error');
+            } finally {
+                sendBtn.innerText = '免费开启订阅';
+                sendBtn.disabled = false;
+            }
         });
 
-        // 验证码输入框交互逻辑
+        // 验证码输入框交互
         otpInputs.forEach((input, index) => {
-            // 输入自动跳到下一个
             input.addEventListener('input', (e) => {
+                // 只允许输入数字
+                e.target.value = e.target.value.replace(/[^0-9]/g, '');
                 if (e.target.value.length === 1 && index < otpInputs.length - 1) {
                     otpInputs[index + 1].focus();
                 }
             });
 
-            // 退格键跳回上一个
             input.addEventListener('keydown', (e) => {
                 if (e.key === 'Backspace' && !e.target.value && index > 0) {
                     otpInputs[index - 1].focus();
                 }
             });
 
-            // 粘贴支持
             input.addEventListener('paste', (e) => {
                 const data = e.clipboardData.getData('text').trim();
                 if (data.length === 6 && /^\d+$/.test(data)) {
@@ -314,18 +323,40 @@
             });
         });
 
-        // 验证激活
-        verifyBtn.addEventListener('click', () => {
+        // 验证激活 (Real Fetch)
+        verifyBtn.addEventListener('click', async () => {
             const code = Array.from(otpInputs).map(i => i.value).join('');
+            const email = emailInput.value.trim();
+
             if (code.length < 6) {
                 showMsg('请输入完整的 6 位验证码', 'error');
                 return;
             }
+
             verifyBtn.innerText = '正在激活...';
-            setTimeout(() => {
-                showMsg('🎉 订阅成功！欢迎加入 AI Insights Daily', 'success');
-                step2.innerHTML = `<div class="py-8 text-green-400 font-bold text-center">✨ 订阅成功！</div>`;
-            }, 1500);
+            verifyBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/verify-code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email, code: code })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    showMsg('🎉 订阅成功！欢迎加入 AI Insights Daily', 'success');
+                    step2.innerHTML = `<div class="py-12 text-green-400 font-bold text-center text-xl fade-in">✨ 订阅成功！已开启日报推送</div>`;
+                } else {
+                    showMsg('❌ 验证码错误或已过期', 'error');
+                }
+            } catch (err) {
+                showMsg('服务器连接失败，请重试', 'error');
+            } finally {
+                verifyBtn.innerText = '确认激活订阅';
+                verifyBtn.disabled = false;
+            }
         });
 
         backBtn.addEventListener('click', () => {
@@ -336,9 +367,13 @@
 
         function showMsg(text, type) {
             msgBox.innerText = text;
-            msgBox.classList.remove('hidden', 'bg-green-500/10', 'text-green-400', 'bg-red-500/10', 'text-red-400');
-            msgBox.classList.add(type === 'success' ? 'bg-green-500/10' : 'bg-red-500/10');
-            msgBox.classList.add(type === 'success' ? 'text-green-400' : 'text-red-400');
+            msgBox.classList.remove('hidden', 'bg-green-500/10', 'border-green-500/20', 'text-green-400', 'bg-red-500/10', 'border-red-500/20', 'text-red-400');
+            
+            if (type === 'success') {
+                msgBox.classList.add('bg-green-500/10', 'border-green-500/20', 'text-green-400');
+            } else {
+                msgBox.classList.add('bg-red-500/10', 'border-red-500/20', 'text-red-400');
+            }
         }
     </script>
 </body>
